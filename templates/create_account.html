@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+  <p>
+    You don't yet have an account for {{ email }}. Would you like to create one?
+  </p>
+  <form action="/auth/create_account" method="get">
+    <div>
+      <label for="email">Email: </label>
+      <input
+        type="email"
+        name="email"
+        id="email"
+        value="{{ email }}"
+        required
+        disabled
+        {# User can't change their email because it's the one they
+    oauth'd with. #}
+      />
+      <p>
+        To change your email, go back and log in to your oauth provider with a
+        different account.
+      </p>
+    </div>
+    <div>
+      <label for="tos-ack">Agree to terms of service: </label>
+      <input type="checkbox" name="tos-ack" id="tos-ack" required />
+      <p>You must agree to the terms of service to proceed.</p>
+    </div>
+    <div>
+      <label for="create-profile">Create profile: </label>
+      <input
+        type="checkbox"
+        name="create-profile"
+        id="create-profile"
+        _="on click
+          toggle @disabled on #username
+          toggle @disabled on #display-name
+          toggle @disabled on #bio"
+      />
+      <p>
+        You can create a full profile now, or do so later. A profile allows
+        interaction and posting. If you don't intend to vote or post publicly,
+        you can skip this step.
+      </p>
+    </div>
+    <div>
+      <label for="username">Username: </label>
+      <input type="text" name="username" id="username" disabled />
+    </div>
+    <div>
+      <label for="display-name">Display name: </label>
+      <input type="text" name="display-name" id="display-name" disabled />
+    </div>
+    <div>
+      <label for="bio">Bio: </label>
+      <input type="textarea" name="bio" id="bio" disabled />
+    </div>
+    <div>
+      <input type="submit" value="Create account" />
+      <input type="submit" value="Cancel" />
+    </div>
+  </form>
+{% endblock content %}
