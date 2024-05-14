@@ -14,7 +14,7 @@ use oauth2::{
 use serde::Deserialize;
 use std::thread;
 
-use crate::models::AppState;
+use crate::app_state::AppState;
 
 const DISCORD_APP_ID: &str = "1229875695316893737";
 const DISCORD_CLIENT_SECRET: &str = "trm5sN6uM1VQjXwTUSKZZu3WLXa0x3lM";
@@ -78,7 +78,6 @@ pub async fn discord_start(app_state: web::Data<AppState>) -> impl Responder {
         }
     }
 
-    info!("auth url is {}", auth_url);
     Either::Right(web::Redirect::to(<oauth2::url::Url as Into<String>>::into(auth_url)).see_other())
 }
 

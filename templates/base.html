@@ -3,40 +3,44 @@
   <head>
     <title>Quest website</title>
     <link rel="stylesheet" href="/tailwind.css" />
+    <script src="https://unpkg.com/htmx.org@1.9" defer></script>
+    <script src="https://unpkg.com/hyperscript.org@0.9" defer></script>
   </head>
   <body class="bg-slate-300">
     <div class="container mx-auto">
       <div class="flex flex-row flex-wrap py-4">
-        <div class="flex-shrink flex-grow-0 mb-2 min-w-32 ml-auto order-first">
+        <div class="order-first mb-2 ml-auto min-w-32 flex-shrink flex-grow-0">
           <nav
-            class="lg:fixed lg:top-4 bg-slate-50 lg:mr-2 min-w-32 p-2 border-4 border-slate-500 [border-style:ridge]"
+            class="min-w-32 border-4 border-slate-500 bg-slate-50 p-2 [border-style:ridge] lg:fixed lg:top-4 lg:mr-2"
           >
             <!-- <nav class="fixed left-0 top-0 object-right-top max-w-80"> -->
-            <h1 class="text-2xl mb-1">Nav</h1>
+            <h1 class="mb-1 text-2xl">Nav</h1>
             <ul>
-              <li class="hover:bg-slate-300">Home</li>
-              <li class="hover:bg-slate-300">Popular</li>
-              <li class="hover:bg-slate-300">Recent</li>
-              <li class="hover:bg-slate-300">Following</li>
-              <li class="hover:bg-slate-300">My quests</li>
+              <li class="hover:bg-slate-200">Home</li>
+              <li class="hover:bg-slate-200">Popular</li>
+              <li class="hover:bg-slate-200">Recent</li>
+              <li class="hover:bg-slate-200">Following</li>
+              <li class="hover:bg-slate-200">My quests</li>
             </ul>
           </nav>
         </div>
         <div
-          class="order-last lg:order-2 bg-slate-50 mx-2 p-2 border-4 border-slate-500 [border-style:ridge] max-w-prose"
+          class="order-last mx-2 max-w-prose border-4 border-slate-500 bg-slate-50 p-2 [border-style:ridge] lg:order-2"
         >
           {% block content %}{% endblock content %}
         </div>
-        <div class="flex-shrink flex-grow-0 mb-2 min-w-32 mr-auto order-2 lg:order-last">
+        <div
+          class="order-2 mb-2 mr-auto min-w-32 flex-shrink flex-grow-0 lg:order-last"
+        >
           <nav
-            class="lg:fixed lg:top-4 bg-slate-50 lg:mr-2 min-w-32 p-2 border-4 border-slate-500 [border-style:ridge]"
+            class="min-w-32 border-4 border-slate-500 bg-slate-50 p-2 [border-style:ridge] lg:fixed lg:top-4 lg:mr-2"
           >
             <!-- <nav class="fixed left-0 top-0 object-right-top max-w-80"> -->
-            <h1 class="text-2xl mb-1">Guest</h1>
+            <h1 class="mb-1 text-2xl">Guest</h1>
             <ul>
-              <li class="hover:bg-slate-300">Log in/Register</li>
-              <li class="hover:bg-slate-300">Profile</li>
-              <li class="hover:bg-slate-300">Notifications</li>
+              <li class="hover:bg-slate-200">Log in/Register</li>
+              <li class="hover:bg-slate-200">Profile</li>
+              <li class="hover:bg-slate-200">Notifications</li>
             </ul>
           </nav>
         </div>

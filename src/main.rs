@@ -1,18 +1,19 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+// Temporarily disable some warnings for development.
+
+use crate::app_state::AppState;
 use crate::models::*;
-use actix_files::Files;
-use actix_web::http::header;
-use actix_web::middleware::Logger;
-use actix_web::{
-    get, http::header::ContentType, post, web, App, HttpResponse, HttpServer, Responder,
-};
+
+use actix_web::{get, middleware, post, web, App, HttpResponse, HttpServer, Responder};
 use askama_actix::Template;
 use concat_arrays::concat_arrays;
 use env_logger::Env;
 use log::info;
-use mime;
 use serde::Deserialize;
 use uuid::Uuid;
 
+mod app_state;
 mod models;
 mod oauth;
 
@@ -110,11 +111,11 @@ pub async fn index() -> impl Responder {
 
 #[get("/tailwind.css")]
 pub async fn get_tailwind() -> impl Responder {
-    // let output_path = Path::new(env!("OUT_DIR")).join("tailwind.css");
     HttpResponse::Ok()
         .content_type(mime::CSS.as_str())
+        // Can't figure out how to use std::path::MAIN_SEPARATOR with concat!,
+        // so this might not work on Windows.
         .body(include_str!(concat!(env!("OUT_DIR"), "/tailwind.css")))
-    // .body(include_str!(output_path.to_str()))
 }
 
 #[actix_web::main]
@@ -130,21 +131,11 @@ async fn main() -> Result<(), sqlx::Error> {
         .connect(database_url.as_str())
         .await?;
 
-    // let (pool, tailwind) = future::join(
-    //     sqlx::postgres::PgPoolOptions::new()
-    //         .max_connections(5)
-    //         .connect(database_url.as_str()),
-    //     NamedFile::open_async(Path::new(env!("OUT_DIR")).join("tailwind.css")),
-    // )
-    // .await;
-    // let pool = pool.expect("failed to create database connection pool");
-    // let tailwind = tailwind.expect("failed to read tailwind.css from build outputs");
-
     let uuid_seed = concat_arrays!(std::process::id().to_ne_bytes(), [0; 2]);
 
     let oauth_client = oauth::oauth_client(port);
 
-    let app_state = models::AppState {
+    let app_state = AppState {
         oauth_client,
         pool,
         uuid_seed,
@@ -152,6 +143,7 @@ async fn main() -> Result<(), sqlx::Error> {
 
     HttpServer::new(move || {
         App::new()
+            .wrap(middleware::Compress::default())
             .app_data(web::Data::new(app_state.clone()))
             .service(get_tailwind)
             .service(check_user_exists)
@@ -161,7 +153,7 @@ async fn main() -> Result<(), sqlx::Error> {
             .service(oauth::discord_start)
             .service(oauth::discord_callback)
             .service(oauth::create_account)
-            .wrap(Logger::default())
+            .wrap(middleware::Logger::default())
     })
     .bind(("127.0.0.1", port))?
     .run()

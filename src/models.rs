@@ -1,6 +1,5 @@
 // use diesel::prelude::*;
 use chrono;
-use oauth2::basic::BasicClient;
 use serde::{Deserialize, Serialize};
 use uuid;
 
@@ -10,6 +9,10 @@ use uuid;
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Account {
     pub id: uuid::Uuid,
+}
+
+#[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
+pub struct Profile {
     pub username: String,
     pub display_name: Option<String>,
     pub email: String,
@@ -35,11 +38,4 @@ pub struct QuestInfo {
     pub slug: String,
     pub description: Option<String>,
     pub last_updated: chrono::DateTime<chrono::offset::Utc>,
-}
-
-#[derive(Clone)]
-pub struct AppState {
-    pub oauth_client: BasicClient,
-    pub pool: sqlx::postgres::PgPool,
-    pub uuid_seed: [u8; 6],
 }
