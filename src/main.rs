@@ -16,6 +16,7 @@ use uuid::Uuid;
 mod app_state;
 mod models;
 mod oauth;
+mod routes;
 
 #[get("/user/{username}/exists")]
 async fn check_user_exists(
@@ -142,18 +143,17 @@ async fn main() -> Result<(), sqlx::Error> {
     };
 
     HttpServer::new(move || {
-        App::new()
+        let app = App::new()
             .wrap(middleware::Compress::default())
+            .wrap(middleware::Logger::default())
             .app_data(web::Data::new(app_state.clone()))
             .service(get_tailwind)
             .service(check_user_exists)
             .service(get_user)
             .service(create_user)
-            .service(index)
-            .service(oauth::discord_start)
-            .service(oauth::discord_callback)
-            .service(oauth::create_account)
-            .wrap(middleware::Logger::default())
+            .service(index);
+        let app = routes::add_routes(app);
+        app
     })
     .bind(("127.0.0.1", port))?
     .run()
