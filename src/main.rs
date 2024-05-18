@@ -5,7 +5,7 @@
 use crate::app_state::AppState;
 use crate::models::*;
 
-use actix_web::{get, middleware, post, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{get, http, middleware, post, web, App, HttpResponse, HttpServer, Responder};
 use askama_actix::Template;
 use concat_arrays::concat_arrays;
 use env_logger::Env;
@@ -27,7 +27,7 @@ async fn check_user_exists(
     let result: Result<Option<(i32,)>, sqlx::Error> =
         sqlx::query_as("select 1 from account where username = $1 limit 1")
             .bind(username)
-            .fetch_optional(&app_state.pool)
+            .fetch_optional(&app_state.db_pool)
             .await;
 
     match result {
@@ -49,7 +49,7 @@ async fn get_user(app_state: web::Data<AppState>, path: web::Path<String>) -> im
         "#,
     )
     .bind(username)
-    .fetch_one(&app_state.pool)
+    .fetch_one(&app_state.db_pool)
     .await;
     match acct {
         Ok(acct) => HttpResponse::Ok().json(acct),
@@ -87,7 +87,7 @@ async fn create_user(
     .bind(username)
     .bind(&body.display_name)
     .bind(&body.email)
-    .fetch_one(&app_state.pool)
+    .fetch_one(&app_state.db_pool)
     .await;
 
     match result {
@@ -113,7 +113,7 @@ pub async fn index() -> impl Responder {
 #[get("/tailwind.css")]
 pub async fn get_tailwind() -> impl Responder {
     HttpResponse::Ok()
-        .content_type(mime::CSS.as_str())
+        .content_type(http::header::ContentType(mime::TEXT_CSS))
         // Can't figure out how to use std::path::MAIN_SEPARATOR with concat!,
         // so this might not work on Windows.
         .body(include_str!(concat!(env!("OUT_DIR"), "/tailwind.css")))
@@ -125,20 +125,27 @@ async fn main() -> Result<(), sqlx::Error> {
     env_logger::init_from_env(Env::default().default_filter_or("info"));
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL must be set");
     let port: u16 = std::env::var("BACKEND_PORT").map_or(8080, |vv| vv.parse().unwrap());
 
-    let pool = sqlx::postgres::PgPoolOptions::new()
+    let db_pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(5)
         .connect(database_url.as_str())
         .await?;
+
+    let redis_config = fred::prelude::RedisConfig::from_url(redis_url.as_str())
+        .expect("failed to create RedisConfig from url");
+    let redis_pool = fred::prelude::RedisPool::new(redis_config, None, None, None, 5)
+        .expect("failed to create RedisPool");
 
     let uuid_seed = concat_arrays!(std::process::id().to_ne_bytes(), [0; 2]);
 
     let oauth_client = oauth::oauth_client(port);
 
     let app_state = AppState {
+        db_pool,
+        redis_pool,
         oauth_client,
-        pool,
         uuid_seed,
     };
 

@@ -52,7 +52,7 @@ pub async fn discord_start(app_state: web::Data<AppState>) -> impl Responder {
     )
     .bind(csrf_token.secret())
     .bind(pkce_verifier.secret())
-    .execute(&app_state.pool)
+    .execute(&app_state.db_pool)
     .await
     {
         Ok(_) => {
@@ -77,6 +77,7 @@ enum DiscordOauthRedirectParams {
         code: String,
         state: String,
     },
+    /// Usually when the user rejected/cancelled login.
     DiscordApiError {
         error: String,
         error_description: String,
@@ -112,7 +113,7 @@ pub async fn discord_callback(
             // We don't care if the query succeeds because there is a main error already.
             thread::spawn(|| async move {
                 let state = state.clone();
-                let pool = app_state.pool.clone();
+                let pool = app_state.db_pool.clone();
 
                 match sqlx::query(
                     r#"
@@ -160,7 +161,7 @@ pub async fn discord_callback(
         "#,
     )
     .bind(&oauth_state)
-    .fetch_optional(&app_state.pool)
+    .fetch_optional(&app_state.db_pool)
     .await;
 
     let pkce_verifier = match result {
@@ -251,7 +252,7 @@ pub async fn discord_callback(
         "#,
     )
     .bind(&discord_email)
-    .fetch_one(&app_state.pool)
+    .fetch_one(&app_state.db_pool)
     .await
     {
         Ok((true,)) => HttpResponse::Ok().body(format!("You are logged in as: {}", discord_email)),
@@ -267,7 +268,7 @@ pub async fn discord_callback(
 }
 // TODO - Add session cookie.
 
-/// URL params expected when Discord redirects back after oauth.
+/// URL params for account creation form.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 enum RegisterNewUserRequest {
