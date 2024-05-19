@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
-  <h1 class="mb-1 text-2xl">Account creation</h1>
-  <p>
+  <h1 class="mb-1 text-2xl font-bold">Account creation</h1>
+  <p class="mb-2">
     You don't yet have an account for {{ email }}. Would you like to create one?
   </p>
   <form action="/auth/create_account" method="get">
-    <div class="my-2 border-4 border-slate-500 p-4">
-      <h2 class="text-xl">Account</h2>
-      <div>
+    <div class="my-2 border-2 border-slate-500 p-2">
+      <h2 class="text-xl font-bold">Account</h2>
+      <div class="py-2">
+        <input type="hidden" name="secret" id="secret" value="{{ secret }}" />
         <label for="email">Email: </label>
         <input
           type="email"
@@ -23,15 +24,61 @@
           account associated with the desired email.
         </p>
       </div>
-      <div>
+      <div class="border-t-2 py-2">
+        <section
+          class="mb-4 h-64 overflow-y-scroll border-2 border-slate-500 p-2"
+        >
+          <h1 class="text-2xl font-bold">Terms of Service</h1>
+
+          <p>
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesent
+            cursus turpis neque, sed dapibus mauris pretium sit amet. Aliquam
+            sed justo ut felis interdum scelerisque. Vivamus id volutpat augue.
+            Vivamus sed augue id augue varius vestibulum. Cras ullamcorper purus
+            at porttitor cursus. Sed elit elit, accumsan at pulvinar nec, cursus
+            accumsan libero. Donec euismod nunc in ipsum tempor bibendum. Etiam
+            scelerisque, nunc eu auctor tincidunt, erat purus volutpat arcu,
+            eget molestie quam urna nec lacus. Proin mauris nisi, pellentesque
+            eget volutpat et, tincidunt maximus diam. Donec vitae suscipit diam.
+          </p>
+
+          <p>
+            Nullam ultricies egestas suscipit. Etiam sit amet ultricies libero.
+            Nam neque purus, ultrices at dignissim blandit, tincidunt eget quam.
+            Praesent vel leo vel eros iaculis aliquam vitae sit amet est.
+            Quisque tincidunt sem quis orci aliquam convallis. Vivamus eu purus
+            eget neque egestas maximus at vitae nisi. In hac habitasse platea
+            dictumst. Vestibulum tristique dui nulla, et commodo ex efficitur
+            id. Phasellus dapibus feugiat congue. Aliquam viverra euismod
+            lectus, a placerat leo ornare at. Mauris quam neque, sollicitudin
+            vitae eros ut, ultricies tincidunt odio. Fusce vestibulum enim
+            laoreet dui hendrerit, sed efficitur sapien ornare.
+          </p>
+
+          <p>
+            Etiam et elit at libero euismod mattis vel quis nunc. Suspendisse
+            potenti. Nam ac ex nisi. Mauris facilisis molestie libero, et
+            suscipit ex suscipit quis. Fusce imperdiet libero nulla, sed semper
+            diam sodales sit amet. Sed viverra ut nulla quis fringilla. Nunc id
+            malesuada quam, eget tincidunt mauris. Duis vel suscipit risus, non
+            maximus tellus.
+          </p>
+        </section>
         <label for="tos-ack">Agree to terms of service: </label>
         <input type="checkbox" name="tos-ack" id="tos-ack" required />
-        <p>You must agree to the terms of service to proceed.</p>
+        <p>
+          You must agree to the terms of service to proceed.
+          <a
+            href="/about/tos.html"
+            class="font-bold underline decoration-dashed hover:decoration-solid"
+            >(Open in a new tab.)</a
+          >
+        </p>
       </div>
     </div>
-    <div class="my-2 border-4 border-slate-500 p-4">
-      <h2 class="text-xl">Profile</h2>
-      <div>
+    <div class="my-2 border-2 border-slate-500 p-2">
+      <h2 class="text-xl font-bold">Profile</h2>
+      <div class="py-2">
         <label for="create-profile">Create profile: </label>
         <input
           type="checkbox"
@@ -43,25 +90,45 @@
           toggle @disabled on #bio"
         />
         <p>
-          You can create a full profile now, or do so later. A profile allows
+          You can create a full profile now or later. A profile allows
           interaction and posting. If you don't intend to vote or post publicly,
           you can skip this step.
         </p>
       </div>
-      <div>
+      <div class="border-t-2 py-2">
         <label for="username">Username: </label>
-        <input type="text" name="username" id="username" disabled />
+        <input
+          type="text"
+          name="username"
+          id="username"
+          placeholder="Username"
+          disabled
+          class="border-2 border-slate-500 disabled:border-slate-100"
+        />
       </div>
-      <div>
+      <div class="border-t-2 py-2">
         <label for="display-name">Display name: </label>
-        <input type="text" name="display-name" id="display-name" disabled />
+        <input
+          type="text"
+          name="display-name"
+          id="display-name"
+          placeholder="Display name"
+          disabled
+          class="border-2 border-slate-500 disabled:border-slate-100"
+        />
       </div>
-      <div>
+      <div class="border-t-2 py-2">
         <label for="bio">Bio: </label>
-        <textarea name="bio" id="bio" disabled></textarea>
+        <textarea
+          name="bio"
+          id="bio"
+          placeholder="Bio"
+          disabled
+          class="border-2 border-slate-500 disabled:border-slate-100"
+        ></textarea>
       </div>
     </div>
-    <div>
+    <div class="border-t-2 py-2">
       <input
         class="bg-green-200 px-2 py-0.5 font-bold hover:bg-green-400"
         type="submit"

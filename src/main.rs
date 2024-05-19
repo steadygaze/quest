@@ -2,14 +2,16 @@
 #![allow(unused_variables)]
 // Temporarily disable some warnings for development.
 
-use crate::app_state::AppState;
+use crate::app_state::{AppState, CompiledRegex};
 use crate::models::*;
 
 use actix_web::{get, http, middleware, post, web, App, HttpResponse, HttpServer, Responder};
 use askama_actix::Template;
 use concat_arrays::concat_arrays;
 use env_logger::Env;
+use fred::interfaces::ClientLike;
 use log::info;
+use regex::Regex;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -137,15 +139,25 @@ async fn main() -> Result<(), sqlx::Error> {
         .expect("failed to create RedisConfig from url");
     let redis_pool = fred::prelude::RedisPool::new(redis_config, None, None, None, 5)
         .expect("failed to create RedisPool");
+    redis_pool
+        .init()
+        .await
+        .expect("failed to initialize redis connection pool");
 
     let uuid_seed = concat_arrays!(std::process::id().to_ne_bytes(), [0; 2]);
 
     let oauth_client = oauth::oauth_client(port);
 
+    let regex = CompiledRegex {
+        alphanumeric: Regex::new(r"^[0-9A-Za-z]+$").expect("failed to compile regex"),
+        oauth_state_ok: Regex::new(r"^[0-9A-Za-z+/-]+=*$").expect("failed to compile regex"),
+    };
+
     let app_state = AppState {
         db_pool,
         redis_pool,
         oauth_client,
+        regex,
         uuid_seed,
     };
 

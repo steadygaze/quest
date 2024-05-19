@@ -1714,6 +1714,8 @@ dependencies = [
  "log",
  "mime",
  "oauth2",
+ "rand",
+ "regex",
  "serde",
  "serde_json",
  "sqlx",

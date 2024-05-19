@@ -6,16 +6,21 @@ use actix_web::{get, web, HttpResponse, Responder};
 use askama::Template;
 use askama_actix::TemplateToResponse;
 use awc::Client;
-use log::{info, trace, warn};
+use fred::interfaces::KeysInterface;
+use log::{trace, warn};
 use oauth2::reqwest::async_http_client;
 use oauth2::{
     AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, Scope,
     StandardRevocableToken, TokenResponse,
 };
+use rand::distributions::{Alphanumeric, DistString};
 use serde::Deserialize;
 use std::thread;
 
 use crate::app_state::AppState;
+
+const OAUTH_EXPIRATION_SEC: i64 = 60 * 10;
+const ACCOUNT_CREATION_TIMEOUT_SEC: i64 = 60 * 30;
 
 /// Add oauth-related routes.
 pub fn add_routes<T>(app: actix_web::App<T>) -> actix_web::App<T>
@@ -25,6 +30,15 @@ where
     app.service(discord_start)
         .service(discord_callback)
         .service(create_account)
+        .service(test)
+}
+
+#[get("/auth/test")]
+pub async fn test(app_state: web::Data<AppState>) -> impl Responder {
+    CreateAccountTemplate {
+        email: "test@test.com",
+        secret: "mysecret",
+    }
 }
 
 /// Start Discord oauth by generating a PKCE challenge and redirecting.
@@ -43,17 +57,16 @@ pub async fn discord_start(app_state: web::Data<AppState>) -> impl Responder {
         .set_pkce_challenge(pkce_challenge)
         .url();
 
-    // Record oauth challenge for verification after redirecting back.
-    match sqlx::query(
-        r#"
-        insert into oauth_redirect_pending (csrf_token, pkce_verifier)
-        values ($1, $2)
-        "#,
-    )
-    .bind(csrf_token.secret())
-    .bind(pkce_verifier.secret())
-    .execute(&app_state.db_pool)
-    .await
+    match app_state
+        .redis_pool
+        .set::<String, _, _>(
+            format!("oauth:secret:{}", csrf_token.secret()),
+            pkce_verifier.secret(),
+            Some(fred::prelude::Expiration::EX(OAUTH_EXPIRATION_SEC)),
+            None,
+            false,
+        )
+        .await
     {
         Ok(_) => {
             trace!("Stored CSRF challenge successfully");
@@ -64,7 +77,7 @@ pub async fn discord_start(app_state: web::Data<AppState>) -> impl Responder {
                 err
             )));
         }
-    }
+    };
 
     Either::Right(web::Redirect::to(<oauth2::url::Url as Into<String>>::into(auth_url)).see_other())
 }
@@ -94,6 +107,7 @@ struct DiscordUser {
 #[template(path = "create_account.html")]
 struct CreateAccountTemplate<'a> {
     email: &'a str,
+    secret: &'a str,
 }
 
 #[get("/auth/discord/callback")]
@@ -102,8 +116,18 @@ pub async fn discord_callback(
     params: web::Query<DiscordOauthRedirectParams>,
 ) -> impl Responder {
     trace!("Got oauth params: {:?}", params);
+    let params = params.into_inner();
 
-    let (oauth_code, oauth_state) = match params.into_inner() {
+    // Guard against Redis key injection.
+    let state = match &params {
+        DiscordOauthRedirectParams::DiscordOauthOk { state, .. } => state,
+        DiscordOauthRedirectParams::DiscordApiError { state, .. } => state,
+    };
+    if state.len() > 64 || !app_state.regex.oauth_state_ok.is_match(state.as_str()) {
+        return HttpResponse::BadRequest().body("Bad oauth state token");
+    }
+
+    let (oauth_code, oauth_state) = match params {
         DiscordOauthRedirectParams::DiscordOauthOk { code, state } => (code, state),
         DiscordOauthRedirectParams::DiscordApiError {
             error,
@@ -115,26 +139,21 @@ pub async fn discord_callback(
                 let state = state.clone();
                 let pool = app_state.db_pool.clone();
 
-                match sqlx::query(
-                    r#"
-                    delete from oauth_redirect_pending
-                    where csrf_token = $1
-                    "#,
-                )
-                .bind(&state)
-                .execute(&pool)
-                .await
+                match app_state
+                    .redis_pool
+                    .del::<i64, _>(format!("oauth:secret:{state}"))
+                    .await
                 {
-                    Ok(result) => {
-                        if result.rows_affected() <= 0 {
-                            info!(
+                    Ok(keys_deleted) => {
+                        if keys_deleted <= 0 {
+                            trace!(
                                 "Ignored missing oauth entry when cleaning up; it likely expired"
                             );
                         }
                     }
                     Err(err) => {
                         warn!(
-                            "Ignored database error when cleaning up pending oauth entry: {}",
+                            "Ignored Redis error when cleaning up pending oauth entry: {}",
                             err
                         );
                     }
@@ -143,7 +162,7 @@ pub async fn discord_callback(
 
             if error == "access_denied" {
                 return HttpResponse::Unauthorized()
-                    .body("Access denied. Try again, but grant permissions.");
+                    .body("Access denied by Discord. Try again, but accept the prompt to grant permissions.");
             } else {
                 return HttpResponse::InternalServerError().body(format!(
                     "Unknown error response from Discord API: error: {}, error_description: {}",
@@ -153,30 +172,24 @@ pub async fn discord_callback(
         }
     };
 
-    let result: Result<Option<(String,)>, sqlx::Error> = sqlx::query_as(
-        r#"
-        delete from oauth_redirect_pending
-        where csrf_token = $1
-        returning pkce_verifier
-        "#,
-    )
-    .bind(&oauth_state)
-    .fetch_optional(&app_state.db_pool)
-    .await;
+    let result = app_state
+        .redis_pool
+        .getdel::<Option<String>, _>(format!("oauth:secret:{oauth_state}"))
+        .await;
 
     let pkce_verifier = match result {
         Ok(None) => {
-            return HttpResponse::Unauthorized().body("Couldn't find pending oauth request");
+            return HttpResponse::BadRequest().body("Couldn't find pending oauth request");
         }
         Err(err) => {
             return HttpResponse::InternalServerError().body(format!(
-                "Database error while retrieving oauth record: {}",
+                "Redis error while retrieving oauth record: {}",
                 err
             ));
         }
-        Ok(Some((verifier,))) => verifier,
+        Ok(Some(verifier)) => verifier,
     };
-    // Invariant params.state == csrf_token already checked with SQL.
+    // Invariant params.state == csrf_token already checked with Redis.
 
     // Now you can trade it for an access token.
     let token_response = match app_state
@@ -255,16 +268,48 @@ pub async fn discord_callback(
     .fetch_one(&app_state.db_pool)
     .await
     {
-        Ok((true,)) => HttpResponse::Ok().body(format!("You are logged in as: {}", discord_email)),
-        Ok((false,)) => CreateAccountTemplate {
-            email: discord_email.as_str(),
+        Ok((true,)) => {
+            return HttpResponse::Ok().body(format!("You are logged in as: {}", discord_email));
         }
-        .to_response(),
-        Err(err) => HttpResponse::InternalServerError().body(format!(
-            "Error checking account status for {}: {}",
-            discord_email, err
-        )),
+        Err(err) => {
+            return HttpResponse::InternalServerError().body(format!(
+                "Error checking account status for {}: {}",
+                discord_email, err
+            ));
+        }
+        Ok((false,)) => (), // Success, but now we must create an account.
     }
+
+    // Store an account secret to be passed back, indicating there is a pending
+    // account creation.
+    let new_account_secret = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
+    match app_state
+        .redis_pool
+        .set::<Option<String>, _, _>(
+            format!("account:new:secret:{new_account_secret}"),
+            &discord_email,
+            Some(fred::types::Expiration::EX(ACCOUNT_CREATION_TIMEOUT_SEC)),
+            Some(fred::types::SetOptions::NX),
+            true,
+        )
+        .await
+    {
+        Ok(Some(existing_value)) => {
+            return HttpResponse::InternalServerError()
+                .body("Generated random duplicate account secret! Try again.");
+        }
+        Err(err) => {
+            return HttpResponse::InternalServerError()
+                .body(format!("Error storing account secret: {}", err));
+        }
+        Ok(None) => (), // Success.
+    };
+
+    CreateAccountTemplate {
+        email: discord_email.as_str(),
+        secret: new_account_secret.as_str(),
+    }
+    .to_response()
 }
 // TODO - Add session cookie.
 
