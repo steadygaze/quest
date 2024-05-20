@@ -1,3 +1,4 @@
+use static_files::resource_dir;
 use std::{env, path::Path, process::Command};
 
 #[allow(dead_code)]
@@ -49,6 +50,10 @@ fn main() -> Result<(), env::VarError> {
             output.status
         );
     }
+
+    resource_dir("./static")
+        .build()
+        .expect("failed to collect static resources");
 
     Ok(())
 }

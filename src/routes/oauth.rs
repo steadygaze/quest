@@ -18,6 +18,7 @@ use serde::Deserialize;
 use std::thread;
 
 use crate::app_state::AppState;
+use crate::partials;
 
 const OAUTH_EXPIRATION_SEC: i64 = 60 * 10;
 const ACCOUNT_CREATION_TIMEOUT_SEC: i64 = 60 * 30;
@@ -31,6 +32,7 @@ where
         .service(discord_callback)
         .service(create_account)
         .service(test)
+        .service(check_if_user_already_exists)
 }
 
 #[get("/auth/test")]
@@ -319,6 +321,43 @@ pub async fn discord_callback(
 enum RegisterNewUserRequest {
     Register { code: String },
     Cancel { code: String },
+}
+
+#[derive(Debug, Deserialize)]
+struct UsernameExistsQuery {
+    username: String,
+}
+
+#[get("/user/exists_already")]
+pub async fn check_if_user_already_exists(
+    app_state: web::Data<AppState>,
+    params: web::Query<UsernameExistsQuery>,
+) -> impl Responder {
+    let username = params.into_inner().username;
+    match sqlx::query_as(
+        r#"
+        select exists(
+          select 1
+          from profile
+          where username = $1
+          limit 1
+        )
+        "#,
+    )
+    .bind(&username)
+    .fetch_one(&app_state.db_pool)
+    .await
+    {
+        Ok((true,)) => partials::FailureTemplate {
+            text: format!("@{username} is already taken").as_str(),
+        }
+        .to_response(),
+        Ok((false,)) => partials::SuccessTemplate {
+            text: format!("@{username} is available").as_str(),
+        }
+        .to_response(),
+        Err(err) => HttpResponse::InternalServerError().body("database error"),
+    }
 }
 
 #[get("/auth/create_account")]

@@ -6,6 +6,7 @@ use crate::app_state::{AppState, CompiledRegex};
 use crate::models::*;
 
 use actix_web::{get, http, middleware, post, web, App, HttpResponse, HttpServer, Responder};
+use actix_web_static_files::ResourceFiles;
 use askama_actix::Template;
 use concat_arrays::concat_arrays;
 use env_logger::Env;
@@ -18,7 +19,10 @@ use uuid::Uuid;
 mod app_state;
 mod models;
 mod oauth;
+mod partials;
 mod routes;
+
+include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
 #[get("/user/{username}/exists")]
 async fn check_user_exists(
@@ -162,10 +166,12 @@ async fn main() -> Result<(), sqlx::Error> {
     };
 
     HttpServer::new(move || {
+        let generated = generate();
         let app = App::new()
             .wrap(middleware::Compress::default())
             .wrap(middleware::Logger::default())
             .app_data(web::Data::new(app_state.clone()))
+            .service(ResourceFiles::new("/static", generated))
             .service(get_tailwind)
             .service(check_user_exists)
             .service(get_user)

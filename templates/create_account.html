@@ -103,8 +103,19 @@
           id="username"
           placeholder="Username"
           disabled
-          class="border-2 border-slate-500 disabled:border-slate-100"
+          hx-get="/user/exists_already"
+          hx-trigger="keyup changed delay:1s"
+          hx-target="#username-validation-target"
+          hx-indicator="#username-spinner"
+          class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
         />
+        <span id="username-validation-target"></span>
+        <img
+          id="username-spinner"
+          class="htmx-indicator inline"
+          src="/static/spinner.svg"
+        />
+        <p>A username may contain letters or hyphens.</p>
       </div>
       <div class="border-t-2 py-2">
         <label for="display-name">Display name: </label>
@@ -114,7 +125,7 @@
           id="display-name"
           placeholder="Display name"
           disabled
-          class="border-2 border-slate-500 disabled:border-slate-100"
+          class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
         />
       </div>
       <div class="border-t-2 py-2">
@@ -124,7 +135,7 @@
           id="bio"
           placeholder="Bio"
           disabled
-          class="border-2 border-slate-500 disabled:border-slate-100"
+          class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
         ></textarea>
       </div>
     </div>
