@@ -2,8 +2,6 @@ drop table if exists quest_comment;
 drop table if exists quest_post;
 drop table if exists quest;
 drop table if exists profile;
-drop table if exists oauth_redirect_pending;
-drop table if exists account_creation_pending;
 drop table if exists active_session;
 drop table if exists account;
 

@@ -1,26 +1,8 @@
 -- TODO - Decide whether to use hyphen or underscore in usernames and URLs.
 -- We would use citext but support for it is lacking.
 
-create table oauth_redirect_pending (
-  csrf_token text primary key,
-  pkce_verifier text
-);
-
-comment on table oauth_redirect_pending is 'State for a pending oauth attempt redirect.';
-comment on column oauth_redirect_pending.csrf_token is 'CSRF token challenge, which will be checked after redirect.';
-comment on column oauth_redirect_pending.pkce_verifier is 'PKCE challenge answer, to be checked against what the oauth provider returns.';
-
 create domain email as text
   check ( value ~ '^[a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$' );
-
-create table account_creation_pending (
-  creation_token text primary key,
-  email email
-);
-
-comment on table account_creation_pending is 'State for an account being created.';
-comment on column account_creation_pending.creation_token is 'Secret to be sent by client to allow account creation.';
-comment on column account_creation_pending.email is 'Email to create the account for.';
 
 create table active_session (
   session_token text primary key,

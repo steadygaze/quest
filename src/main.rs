@@ -154,7 +154,7 @@ async fn main() -> Result<(), sqlx::Error> {
 
     let regex = CompiledRegex {
         alphanumeric: Regex::new(r"^[0-9A-Za-z]+$").expect("failed to compile regex"),
-        oauth_state_ok: Regex::new(r"^[0-9A-Za-z+/-]+=*$").expect("failed to compile regex"),
+        oauth_state_ok: Regex::new(r"^[0-9A-Za-z+/_-]+=*$").expect("failed to compile regex"),
     };
 
     let app_state = AppState {

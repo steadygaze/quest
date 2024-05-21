@@ -4,7 +4,7 @@
     <title>Quest website</title>
     <link rel="stylesheet" href="/tailwind.css" />
     <script src="https://unpkg.com/htmx.org@1.9" defer></script>
-    <script src="https://unpkg.com/hyperscript.org@0.9" defer></script>
+    <script src="https://unpkg.com/alpinejs@3" defer></script>
   </head>
   <body class="bg-slate-300">
     <div class="container mx-auto">
@@ -19,14 +19,16 @@
               <li class="hover:bg-slate-200">Home</li>
               <li class="hover:bg-slate-200">Popular</li>
               <li class="hover:bg-slate-200">Recent</li>
-              <hr class="my-1 border-slate-700 border-1 dark:border-slate-300" />
+              <hr
+                class="border-1 my-1 border-slate-700 dark:border-slate-300"
+              />
               <li class="hover:bg-slate-200">Following</li>
               <li class="hover:bg-slate-200">My quests</li>
             </ul>
           </nav>
         </div>
         <div
-          class="order-last mx-2 max-w-prose border-4 border-slate-500 bg-slate-50 p-2 [border-style:ridge] lg:order-2"
+          class="order-last mx-2 w-full max-w-prose border-4 border-slate-500 bg-slate-50 p-2 [border-style:ridge] lg:order-2"
         >
           {% block content %}{% endblock content %}
         </div>

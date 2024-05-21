@@ -2,12 +2,15 @@
 use actix_web::dev::ServiceFactory;
 use actix_web::dev::ServiceRequest;
 use actix_web::web::Either;
-use actix_web::{get, web, HttpResponse, Responder};
+use actix_web::{get, post, web, HttpResponse, Responder};
 use askama::Template;
 use askama_actix::TemplateToResponse;
+use awc::cookie::Cookie;
 use awc::Client;
+use fred::interfaces::HashesInterface;
 use fred::interfaces::KeysInterface;
-use log::{trace, warn};
+use fred::prelude::RedisValue;
+use log::{error, trace, warn};
 use oauth2::reqwest::async_http_client;
 use oauth2::{
     AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, Scope,
@@ -15,13 +18,17 @@ use oauth2::{
 };
 use rand::distributions::{Alphanumeric, DistString};
 use serde::Deserialize;
+use sqlx::Row;
+use std::collections::HashMap;
 use std::thread;
+use uuid::Uuid;
 
 use crate::app_state::AppState;
 use crate::partials;
 
 const OAUTH_EXPIRATION_SEC: i64 = 60 * 10;
 const ACCOUNT_CREATION_TIMEOUT_SEC: i64 = 60 * 30;
+const SESSION_TTL: i64 = 30 * 24 * 60 * 60; // 30 days
 
 /// Add oauth-related routes.
 pub fn add_routes<T>(app: actix_web::App<T>) -> actix_web::App<T>
@@ -33,6 +40,7 @@ where
         .service(create_account)
         .service(test)
         .service(check_if_user_already_exists)
+        .service(cancel_create_account)
 }
 
 #[get("/auth/test")]
@@ -317,10 +325,14 @@ pub async fn discord_callback(
 
 /// URL params for account creation form.
 #[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
-enum RegisterNewUserRequest {
-    Register { code: String },
-    Cancel { code: String },
+struct RegisterUserFormData {
+    secret: String,
+    #[serde(rename = "tos-ack")]
+    tos_ack: String, // "on" or "off"
+    #[serde(rename = "create-profile")]
+    create_profile: Option<String>, // "on" or "off"
+    username: Option<String>,
+    bio: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -360,12 +372,108 @@ pub async fn check_if_user_already_exists(
     }
 }
 
-#[get("/auth/create_account")]
+#[post("/auth/create_account")]
 pub async fn create_account(
     app_state: web::Data<AppState>,
-    params: web::Query<RegisterNewUserRequest>,
+    form: web::Form<RegisterUserFormData>,
 ) -> impl Responder {
-    HttpResponse::Ok().body("ok")
+    let email = match app_state
+        .redis_pool
+        .getdel::<Option<String>, _>(format!("account:new:secret:{}", form.secret))
+        .await
+    {
+        Err(err) => {
+            warn!("Couldn't get pending account creation state: {}", err);
+            return HttpResponse::InternalServerError()
+                .body("Couldn't get pending account creation state");
+        }
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            return HttpResponse::InternalServerError().body("No pending account creation");
+        }
+    };
+
+    let id: Uuid = match sqlx::query(
+        r#"
+        insert into account (email)
+        values ($1)
+        returning id
+        "#,
+    )
+    .bind(&email)
+    .fetch_one(&app_state.db_pool)
+    .await
+    {
+        Err(err) => return HttpResponse::InternalServerError().body("database error"),
+        Ok(row) => row.get(0),
+    };
+
+    let session_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
+    let pipeline = app_state.redis_pool.next().pipeline();
+    let _ = pipeline
+        .hset::<i64, _, _>(
+            format!("session:{session_id}"),
+            HashMap::from([("user_id", id.to_string())]),
+        )
+        .await;
+    let _ = pipeline
+        .expire::<i64, _>(format!("session:{session_id}"), SESSION_TTL)
+        .await;
+    let results = pipeline.try_all::<RedisValue>().await;
+
+    if let Err(err) = &results[0] {
+        error!("Couldn't create session: {}", err);
+        return partials::FailureTemplate {
+            text: "Couldn't create session; try logging in again.",
+        }
+        .to_response();
+    }
+
+    if let Err(err) = &results[1] {
+        warn!("Couldn't set session expiration: {}", err);
+    }
+
+    let mut response = partials::MessagePageTemplate {
+        message: "Account created successfully. You are now logged in.",
+    }
+    .to_response();
+    let sid_cookie = Cookie::build("sid", session_id)
+        .path("/")
+        .http_only(true)
+        // .secure(true) // TODO: Set up https testing.
+        .finish();
+    if let Err(err) = response.add_cookie(&sid_cookie) {
+        error!("Couldn't set cookie: {}", err);
+    }
+    response
+}
+
+#[post("/auth/cancel_create_account")]
+pub async fn cancel_create_account(
+    app_state: web::Data<AppState>,
+    form: web::Form<RegisterUserFormData>,
+) -> impl Responder {
+    match app_state
+        .redis_pool
+        .del::<String, _>(format!("account:new:secret:{}", form.secret))
+        .await
+    {
+        Err(err) => {
+            warn!(
+                "Error talking to Redis when cancelling account creation: {}",
+                err
+            );
+            // This doesn't need to be a user-visible error. The key should
+            // expire anyway.
+        }
+        Ok(_) => (), // We don't care if we didn't remove anything; the key
+                     // could've expired.
+    };
+
+    partials::MessagePageTemplate {
+        message: "Account creation cancelled. If you want to create a new account, start over.",
+    }
+    .to_response()
 }
 
 // TODO - Add logout mechanism.

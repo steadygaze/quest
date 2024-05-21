@@ -12,3 +12,9 @@ pub struct SuccessTemplate<'a> {
 pub struct FailureTemplate<'a> {
     pub text: &'a str,
 }
+
+#[derive(Template)]
+#[template(path = "message_page.html")]
+pub struct MessagePageTemplate<'a> {
+    pub message: &'a str,
+}

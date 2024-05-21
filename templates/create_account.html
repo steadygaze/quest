@@ -4,7 +4,11 @@
   <p class="mb-2">
     You don't yet have an account for {{ email }}. Would you like to create one?
   </p>
-  <form action="/auth/create_account" method="get">
+  <form
+    action="/auth/create_account"
+    method="post"
+    x-data="{createProfile: false}"
+  >
     <div class="my-2 border-2 border-slate-500 p-2">
       <h2 class="text-xl font-bold">Account</h2>
       <div class="py-2">
@@ -17,7 +21,7 @@
           value="{{ email }}"
           required
           disabled
-          {# User can't change their email because it's the one they oauth'd with. #}
+          {# User can't change their email because it's the one they oauth'd with. Also, the server remembers the email, so we don't have to bother including it in the form submission. #}
         />
         <p>
           To change your email, cancel and log in to your oauth provider with an
@@ -84,10 +88,8 @@
           type="checkbox"
           name="create-profile"
           id="create-profile"
-          _="on click
-          toggle @disabled on #username
-          toggle @disabled on #display-name
-          toggle @disabled on #bio"
+          x-bind:value="createProfile"
+          x-on:click="createProfile = !createProfile"
         />
         <p>
           You can create a full profile now or later. A profile allows
@@ -102,7 +104,7 @@
           name="username"
           id="username"
           placeholder="Username"
-          disabled
+          x-bind:disabled="!createProfile"
           hx-get="/user/exists_already"
           hx-trigger="keyup changed delay:1s"
           hx-target="#username-validation-target"
@@ -118,23 +120,12 @@
         <p>A username may contain letters or hyphens.</p>
       </div>
       <div class="border-t-2 py-2">
-        <label for="display-name">Display name: </label>
-        <input
-          type="text"
-          name="display-name"
-          id="display-name"
-          placeholder="Display name"
-          disabled
-          class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
-        />
-      </div>
-      <div class="border-t-2 py-2">
         <label for="bio">Bio: </label>
         <textarea
           name="bio"
           id="bio"
           placeholder="Bio"
-          disabled
+          x-bind:disabled="!createProfile"
           class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
         ></textarea>
       </div>
@@ -148,7 +139,9 @@
       <input
         class="bg-slate-200 px-2 py-0.5 font-bold hover:bg-slate-400"
         type="submit"
+        formaction="/auth/cancel_create_account"
         value="Cancel"
+        {# Can cancel without checking TOS checkbox. #}
       />
     </div>
   </form>
