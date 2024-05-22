@@ -28,6 +28,7 @@ fred = "9.0.3"
 regex = "1.10.4"
 rand = "0.8.5"
 actix-web-static-files = "4.0.1"
+listenfd = "1.0.1"
 
 [build-dependencies]
 static-files = "0.2"

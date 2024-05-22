@@ -11,6 +11,7 @@ use askama_actix::Template;
 use concat_arrays::concat_arrays;
 use env_logger::Env;
 use fred::interfaces::ClientLike;
+use listenfd::ListenFd;
 use log::info;
 use regex::Regex;
 use serde::Deserialize;
@@ -165,7 +166,8 @@ async fn main() -> Result<(), sqlx::Error> {
         uuid_seed,
     };
 
-    HttpServer::new(move || {
+    let mut listenfd = ListenFd::from_env();
+    let server = HttpServer::new(move || {
         let generated = generate();
         let app = App::new()
             .wrap(middleware::Compress::default())
@@ -179,10 +181,15 @@ async fn main() -> Result<(), sqlx::Error> {
             .service(index);
         let app = routes::add_routes(app);
         app
-    })
-    .bind(("127.0.0.1", port))?
-    .run()
-    .await?;
+    });
+
+    let server = if let Some(l) = listenfd.take_tcp_listener(0).unwrap() {
+        server.listen(l)?
+    } else {
+        server.bind(("127.0.0.1", port))?
+    };
+
+    server.run().await?;
 
     Ok(())
 }
