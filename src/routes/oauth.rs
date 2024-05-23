@@ -2,6 +2,7 @@
 use actix_web::dev::ServiceFactory;
 use actix_web::dev::ServiceRequest;
 use actix_web::web::Either;
+use actix_web::HttpRequest;
 use actix_web::{get, post, web, HttpResponse, Responder};
 use askama::Template;
 use askama_actix::TemplateToResponse;
@@ -23,12 +24,15 @@ use std::collections::HashMap;
 use std::thread;
 use uuid::Uuid;
 
-use crate::app_state::AppState;
+use crate::app_state::{AppConfig, AppState};
+use crate::key;
 use crate::partials;
 
 const OAUTH_EXPIRATION_SEC: i64 = 60 * 10;
 const ACCOUNT_CREATION_TIMEOUT_SEC: i64 = 60 * 30;
 const SESSION_TTL: i64 = 30 * 24 * 60 * 60; // 30 days
+
+const SESSION_ID_COOKIE: &str = "sid";
 
 /// Add oauth-related routes.
 pub fn add_routes<T>(app: actix_web::App<T>) -> actix_web::App<T>
@@ -41,14 +45,17 @@ where
         .service(test)
         .service(check_if_user_already_exists)
         .service(cancel_create_account)
+        .service(logout)
 }
 
 #[get("/auth/test")]
 pub async fn test(app_state: web::Data<AppState>) -> impl Responder {
     CreateAccountTemplate {
+        config: &app_state.config,
         email: "test@test.com",
         secret: "mysecret",
     }
+    .to_response()
 }
 
 /// Start Discord oauth by generating a PKCE challenge and redirecting.
@@ -70,7 +77,7 @@ pub async fn discord_start(app_state: web::Data<AppState>) -> impl Responder {
     match app_state
         .redis_pool
         .set::<String, _, _>(
-            format!("oauth:secret:{}", csrf_token.secret()),
+            key::oauth_secret(csrf_token.secret()),
             pkce_verifier.secret(),
             Some(fred::prelude::Expiration::EX(OAUTH_EXPIRATION_SEC)),
             None,
@@ -116,6 +123,7 @@ struct DiscordUser {
 #[derive(Template)]
 #[template(path = "create_account.html")]
 struct CreateAccountTemplate<'a> {
+    config: &'a AppConfig,
     email: &'a str,
     secret: &'a str,
 }
@@ -151,7 +159,7 @@ pub async fn discord_callback(
 
                 match app_state
                     .redis_pool
-                    .del::<i64, _>(format!("oauth:secret:{state}"))
+                    .del::<i64, _>(key::oauth_secret(&state))
                     .await
                 {
                     Ok(keys_deleted) => {
@@ -184,7 +192,7 @@ pub async fn discord_callback(
 
     let result = app_state
         .redis_pool
-        .getdel::<Option<String>, _>(format!("oauth:secret:{oauth_state}"))
+        .getdel::<Option<String>, _>(key::oauth_secret(&oauth_state))
         .await;
 
     let pkce_verifier = match result {
@@ -296,7 +304,7 @@ pub async fn discord_callback(
     match app_state
         .redis_pool
         .set::<Option<String>, _, _>(
-            format!("account:new:secret:{new_account_secret}"),
+            key::new_account_secret(&new_account_secret),
             &discord_email,
             Some(fred::types::Expiration::EX(ACCOUNT_CREATION_TIMEOUT_SEC)),
             Some(fred::types::SetOptions::NX),
@@ -316,6 +324,7 @@ pub async fn discord_callback(
     };
 
     CreateAccountTemplate {
+        config: &app_state.config,
         email: discord_email.as_str(),
         secret: new_account_secret.as_str(),
     }
@@ -379,7 +388,7 @@ pub async fn create_account(
 ) -> impl Responder {
     let email = match app_state
         .redis_pool
-        .getdel::<Option<String>, _>(format!("account:new:secret:{}", form.secret))
+        .getdel::<Option<String>, _>(key::new_account_secret(&form.secret))
         .await
     {
         Err(err) => {
@@ -412,12 +421,12 @@ pub async fn create_account(
     let pipeline = app_state.redis_pool.next().pipeline();
     let _ = pipeline
         .hset::<i64, _, _>(
-            format!("session:{session_id}"),
+            key::session(&session_id),
             HashMap::from([("user_id", id.to_string())]),
         )
         .await;
     let _ = pipeline
-        .expire::<i64, _>(format!("session:{session_id}"), SESSION_TTL)
+        .expire::<i64, _>(key::session(&session_id), SESSION_TTL)
         .await;
     let results = pipeline.try_all::<RedisValue>().await;
 
@@ -434,10 +443,11 @@ pub async fn create_account(
     }
 
     let mut response = partials::MessagePageTemplate {
+        config: &app_state.config,
         message: "Account created successfully. You are now logged in.",
     }
     .to_response();
-    let sid_cookie = Cookie::build("sid", session_id)
+    let sid_cookie = Cookie::build(SESSION_ID_COOKIE, session_id)
         .path("/")
         .http_only(true)
         // .secure(true) // TODO: Set up https testing.
@@ -455,7 +465,7 @@ pub async fn cancel_create_account(
 ) -> impl Responder {
     match app_state
         .redis_pool
-        .del::<String, _>(format!("account:new:secret:{}", form.secret))
+        .del::<String, _>(key::new_account_secret(&form.secret))
         .await
     {
         Err(err) => {
@@ -471,9 +481,46 @@ pub async fn cancel_create_account(
     };
 
     partials::MessagePageTemplate {
+        config: &app_state.config,
         message: "Account creation cancelled. If you want to create a new account, start over.",
     }
     .to_response()
+}
+
+#[get("/auth/logout")]
+pub async fn logout(app_state: web::Data<AppState>, request: HttpRequest) -> impl Responder {
+    if let Some(session_id) = request.cookie(SESSION_ID_COOKIE) {
+        if let Err(err) = app_state
+            .redis_pool
+            .del::<String, _>(key::session(&session_id.value()))
+            .await
+        {
+            error!("Failed to clear session {}: {}", &session_id.value(), err)
+        }
+
+        let mut response = partials::MessagePageTemplate {
+            config: &app_state.config,
+            message: "You are now logged out. Goodbye.",
+        }
+        .to_response();
+
+        if let Err(err) = response.add_removal_cookie(&session_id) {
+            error!("Failed to set removal cookie");
+            return partials::MessagePageTemplate {
+                config: &app_state.config,
+                message: "Couldn't log you out for some reason. Try again?",
+            }
+            .to_response();
+        };
+
+        response
+    } else {
+        partials::MessagePageTemplate {
+            config: &app_state.config,
+            message: "You were already logged out.",
+        }
+        .to_response()
+    }
 }
 
 // TODO - Add logout mechanism.
