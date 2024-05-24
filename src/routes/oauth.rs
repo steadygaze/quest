@@ -3,13 +3,16 @@ use actix_web::dev::ServiceFactory;
 use actix_web::dev::ServiceRequest;
 use actix_web::web::Either;
 use actix_web::HttpRequest;
-use actix_web::{get, post, web, HttpResponse, Responder};
+use actix_web::{cookie, get, post, web, HttpResponse, Responder};
 use askama::Template;
 use askama_actix::TemplateToResponse;
 use awc::cookie::Cookie;
 use awc::Client;
+use fred::clients::RedisPool;
+use fred::error::RedisError;
 use fred::interfaces::HashesInterface;
 use fred::interfaces::KeysInterface;
+use fred::interfaces::TransactionInterface;
 use fred::prelude::RedisValue;
 use log::{error, trace, warn};
 use oauth2::reqwest::async_http_client;
@@ -30,7 +33,8 @@ use crate::partials;
 
 const OAUTH_EXPIRATION_SEC: i64 = 60 * 10;
 const ACCOUNT_CREATION_TIMEOUT_SEC: i64 = 60 * 30;
-const SESSION_TTL: i64 = 30 * 24 * 60 * 60; // 30 days
+const SESSION_TTL_DAYS: i64 = 30; // 30 days
+const SESSION_TTL_SEC: i64 = SESSION_TTL_DAYS * 24 * 60 * 60; // 30 days
 
 const SESSION_ID_COOKIE: &str = "sid";
 
@@ -132,6 +136,7 @@ struct CreateAccountTemplate<'a> {
 pub async fn discord_callback(
     app_state: web::Data<AppState>,
     params: web::Query<DiscordOauthRedirectParams>,
+    request: HttpRequest,
 ) -> impl Responder {
     trace!("Got oauth params: {:?}", params);
     let params = params.into_inner();
@@ -272,22 +277,44 @@ pub async fn discord_callback(
     }
     .email;
 
-    match sqlx::query_as(
+    match sqlx::query_as::<_, (Uuid,)>(
         r#"
-        select exists(
-          select 1
-          from account
-          where email = $1
-          limit 1
-        )
+        select id
+        from account
+        where email = $1
+        limit 1
         "#,
     )
     .bind(&discord_email)
-    .fetch_one(&app_state.db_pool)
+    .fetch_optional(&app_state.db_pool)
     .await
     {
-        Ok((true,)) => {
-            return HttpResponse::Ok().body(format!("You are logged in as: {}", discord_email));
+        Ok(Some((user_id,))) => {
+            // TODO: Fix relogin session cleanup bug.
+            let previous_session = request.cookie(SESSION_ID_COOKIE);
+            trace!("Got login sid cookie {:?}", previous_session);
+            // Regular login for existing user.
+            return match create_session(
+                &app_state.redis_pool,
+                user_id.to_string(),
+                previous_session,
+            )
+            .await
+            {
+                Ok(cookie) => {
+                    let mut response =
+                        HttpResponse::Ok().body(format!("You are logged in as: {}", discord_email));
+                    if let Err(err) = response.add_cookie(&cookie) {
+                        error!("Error setting session cookie: {err}");
+                    }
+                    response
+                }
+                Err(err) => {
+                    error!("Error creating session: {err}");
+                    return HttpResponse::InternalServerError()
+                        .body("Error logging in. Try again?");
+                }
+            };
         }
         Err(err) => {
             return HttpResponse::InternalServerError().body(format!(
@@ -295,7 +322,7 @@ pub async fn discord_callback(
                 discord_email, err
             ));
         }
-        Ok((false,)) => (), // Success, but now we must create an account.
+        Ok(None) => (), // Success, but now we must create an account.
     }
 
     // Store an account secret to be passed back, indicating there is a pending
@@ -381,10 +408,42 @@ pub async fn check_if_user_already_exists(
     }
 }
 
+async fn create_session<'a>(
+    redis_pool: &'a RedisPool,
+    user_id: String,
+    previous_session: Option<Cookie<'_>>,
+) -> Result<Cookie<'a>, RedisError> {
+    let session_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
+    let transaction = redis_pool.multi();
+    if let Some(previous_session) = previous_session {
+        trace!("Also cleaning up previous session as part of login");
+        let _ = transaction.del::<String, _>(key::session(previous_session.name()));
+    }
+    let _ = transaction
+        .hset::<i64, _, _>(
+            key::session(&session_id),
+            HashMap::from([("user_id", user_id)]),
+        )
+        .await;
+    let _ = transaction
+        .expire::<i64, _>(key::session(&session_id), SESSION_TTL_SEC)
+        .await;
+    transaction.exec::<(RedisValue, RedisValue)>(true).await?;
+
+    Ok(Cookie::build(SESSION_ID_COOKIE, session_id)
+        .path("/")
+        .http_only(true)
+        // .secure(true) // TODO: Set up https testing.
+        .max_age(cookie::time::Duration::seconds(SESSION_TTL_SEC))
+        .same_site(cookie::SameSite::Strict)
+        .finish())
+}
+
 #[post("/auth/create_account")]
 pub async fn create_account(
     app_state: web::Data<AppState>,
     form: web::Form<RegisterUserFormData>,
+    request: HttpRequest,
 ) -> impl Responder {
     let email = match app_state
         .redis_pool
@@ -413,49 +472,38 @@ pub async fn create_account(
     .fetch_one(&app_state.db_pool)
     .await
     {
-        Err(err) => return HttpResponse::InternalServerError().body("database error"),
+        Err(err) => {
+            return HttpResponse::InternalServerError().body("Error creating account. Try again?")
+        }
         Ok(row) => row.get(0),
     };
 
-    let session_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
-    let pipeline = app_state.redis_pool.next().pipeline();
-    let _ = pipeline
-        .hset::<i64, _, _>(
-            key::session(&session_id),
-            HashMap::from([("user_id", id.to_string())]),
-        )
-        .await;
-    let _ = pipeline
-        .expire::<i64, _>(key::session(&session_id), SESSION_TTL)
-        .await;
-    let results = pipeline.try_all::<RedisValue>().await;
-
-    if let Err(err) = &results[0] {
-        error!("Couldn't create session: {}", err);
-        return partials::FailureTemplate {
-            text: "Couldn't create session; try logging in again.",
+    match create_session(
+        &app_state.redis_pool,
+        id.to_string(),
+        request.cookie(SESSION_ID_COOKIE),
+    )
+    .await
+    {
+        Ok(cookie) => {
+            let mut response = partials::MessagePageTemplate {
+                config: &app_state.config,
+                message: "Account created successfully. You are now logged in.",
+            }
+            .to_response();
+            if let Err(err) = response.add_cookie(&cookie) {
+                error!("Couldn't set cookie: {}", err);
+            }
+            response
         }
-        .to_response();
+        Err(err) => {
+            error!("Couldn't create session (after creating new user): {err}");
+            return partials::FailureTemplate {
+                text: "Couldn't create session; try logging in again.",
+            }
+            .to_response();
+        }
     }
-
-    if let Err(err) = &results[1] {
-        warn!("Couldn't set session expiration: {}", err);
-    }
-
-    let mut response = partials::MessagePageTemplate {
-        config: &app_state.config,
-        message: "Account created successfully. You are now logged in.",
-    }
-    .to_response();
-    let sid_cookie = Cookie::build(SESSION_ID_COOKIE, session_id)
-        .path("/")
-        .http_only(true)
-        // .secure(true) // TODO: Set up https testing.
-        .finish();
-    if let Err(err) = response.add_cookie(&sid_cookie) {
-        error!("Couldn't set cookie: {}", err);
-    }
-    response
 }
 
 #[post("/auth/cancel_create_account")]

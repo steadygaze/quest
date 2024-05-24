@@ -4,6 +4,7 @@
 
 use crate::app_state::{AppConfig, AppState, CompiledRegex};
 
+use actix_web::HttpRequest;
 use actix_web::{get, http, middleware, web, App, HttpResponse, HttpServer, Responder};
 use actix_web_static_files::ResourceFiles;
 use askama_actix::Template;
@@ -17,7 +18,6 @@ use regex::Regex;
 
 mod app_state;
 mod key;
-mod models;
 mod oauth;
 mod partials;
 mod routes;
@@ -32,7 +32,8 @@ struct IndexTemplate<'a> {
 }
 
 #[get("/")]
-pub async fn index(app_state: web::Data<AppState>) -> impl Responder {
+pub async fn index(app_state: web::Data<AppState>, request: HttpRequest) -> impl Responder {
+    log::trace!("Got sid cookie {:?}", request.cookie("sid"));
     IndexTemplate {
         config: &app_state.config,
         name: "Alice",
