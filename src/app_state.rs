@@ -22,6 +22,8 @@ pub struct CompiledRegex {
 #[derive(Clone, Deserialize)]
 pub struct AppConfig {
     pub database_url: String,
+    pub discord_app_id: String,
+    pub discord_client_secret: String,
     pub port: u16,
     pub redis_url: String,
     pub site_name: String,

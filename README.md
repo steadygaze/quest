@@ -4,6 +4,10 @@
 
 ### Setup
 
+Have Postgres and Redis running. Consult `AppConfig` in `src/app_state.rs` for configs that are available. You can create a `.env` file in the git root to configure the app in development. All fields are prefixed by `QUEST_`. So, for example, to set the Postgres URL, create a line `QUEST_DATABASE_URL=postgres://localhost/quest`.
+
+If you want live reloading in development, you must have Node.js installed (for `npx`) and `cargo install` some additional dependencies.
+
 ```shell
 cargo install cargo-watch systemfd
 ```

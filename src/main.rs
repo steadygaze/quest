@@ -55,6 +55,8 @@ async fn main() -> Result<(), sqlx::Error> {
     env_logger::init_from_env(Env::default().default_filter_or("info,quest=trace"));
 
     let config: AppConfig = Config::builder()
+        .set_default("SITE_NAME", "Quest")
+        .unwrap()
         .add_source(
             config::Environment::with_prefix("QUEST"), // .try_parsing(true)
                                                        // .list_separator(","),
@@ -80,14 +82,14 @@ async fn main() -> Result<(), sqlx::Error> {
 
     let uuid_seed = concat_arrays!(std::process::id().to_ne_bytes(), [0; 2]);
 
-    let port = config.port.clone();
-    let oauth_client = oauth::oauth_client(port);
+    let oauth_client = oauth::oauth_client(&config);
 
     let regex = CompiledRegex {
         alphanumeric: Regex::new(r"^[0-9A-Za-z]+$").expect("failed to compile regex"),
         oauth_state_ok: Regex::new(r"^[0-9A-Za-z+/_-]+=*$").expect("failed to compile regex"),
     };
 
+    let port = config.port.clone();
     let app_state = AppState {
         config,
         db_pool,
