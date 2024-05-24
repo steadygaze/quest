@@ -290,9 +290,10 @@ pub async fn discord_callback(
     .await
     {
         Ok(Some((user_id,))) => {
-            // TODO: Fix relogin session cleanup bug.
             let previous_session = request.cookie(SESSION_ID_COOKIE);
-            trace!("Got login sid cookie {:?}", previous_session);
+            if previous_session.is_some() {
+                trace!("Clearing a previous session on new login");
+            }
             // Regular login for existing user.
             return match create_session(
                 &app_state.redis_pool,
@@ -435,7 +436,8 @@ async fn create_session<'a>(
         .http_only(true)
         // .secure(true) // TODO: Set up https testing.
         .max_age(cookie::time::Duration::seconds(SESSION_TTL_SEC))
-        .same_site(cookie::SameSite::Strict)
+        // Must be lax to be sent with login redirect and to be logged in when navigating from externally linked pages.
+        .same_site(cookie::SameSite::Lax)
         .finish())
 }
 
@@ -537,7 +539,8 @@ pub async fn cancel_create_account(
 
 #[get("/auth/logout")]
 pub async fn logout(app_state: web::Data<AppState>, request: HttpRequest) -> impl Responder {
-    if let Some(session_id) = request.cookie(SESSION_ID_COOKIE) {
+    if let Some(mut session_id) = request.cookie(SESSION_ID_COOKIE) {
+        trace!("Logging out session {:?}", session_id);
         if let Err(err) = app_state
             .redis_pool
             .del::<String, _>(key::session(&session_id.value()))
@@ -552,6 +555,9 @@ pub async fn logout(app_state: web::Data<AppState>, request: HttpRequest) -> imp
         }
         .to_response();
 
+        // We must re-set some attributes that aren't transmitted with the
+        // cookie in the request, otherwise removal won't work.
+        session_id.set_path("/");
         if let Err(err) = response.add_removal_cookie(&session_id) {
             error!("Failed to set removal cookie");
             return partials::MessagePageTemplate {
