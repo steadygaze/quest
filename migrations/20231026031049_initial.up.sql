@@ -31,7 +31,7 @@ comment on column account.created_at is 'Created at timestamp.';
 create table profile (
   id uuid primary key references account,
   username username unique not null constraint username_not_too_long check (length(username) < 30),
-  display_name text constraint display_name_not_too_long check (length(display_name) < 30),
+  -- display_name text constraint display_name_not_too_long check (length(display_name) < 30),
   -- TODO - There is an ActivityPub name for this.
   bio text constraint bio_not_too_long check (length(bio) < 5000)
 );
@@ -39,7 +39,6 @@ create table profile (
 comment on table profile is 'User profile, for non-lurker users.';
 comment on column profile.id is 'Profile ID.';
 comment on column profile.username is 'Username.';
-comment on column profile.display_name is 'Display name';
 comment on column profile.bio is 'User bio';
 
 -- Whether a quest is active or not.

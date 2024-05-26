@@ -14,9 +14,13 @@ use config::Config;
 use env_logger::Env;
 use fred::interfaces::ClientLike;
 use listenfd::ListenFd;
+use log::warn;
 use regex::Regex;
+use std::sync::Arc;
+use std::thread;
 
 mod app_state;
+mod error;
 mod key;
 mod oauth;
 mod partials;
@@ -90,8 +94,21 @@ async fn main() -> Result<(), sqlx::Error> {
         oauth_state_ok: Regex::new(r"^[0-9A-Za-z+/_-]+=*$").expect("failed to compile regex"),
     };
 
+    let (sender, receiver) = crossbeam_channel::unbounded::<app_state::FnBox>();
+    thread::spawn(move || async move {
+        loop {
+            match receiver.recv() {
+                Ok(fn_box) => fn_box(),
+                Err(err) => {
+                    warn!("Error dequeueing background work: {err}");
+                }
+            }
+        }
+    });
+
     let port = config.port.clone();
     let app_state = AppState {
+        background_sender: Arc::new(sender),
         config,
         db_pool,
         redis_pool,
@@ -106,8 +123,19 @@ async fn main() -> Result<(), sqlx::Error> {
         let app = App::new()
             .wrap(middleware::Compress::default())
             .wrap(middleware::Logger::default())
+            .wrap(
+                middleware::ErrorHandlers::new()
+                    .handler(http::StatusCode::NOT_FOUND, error::custom_404),
+            )
             .app_data(web::Data::new(app_state.clone()))
-            .service(ResourceFiles::new("/static", generated))
+            .service(
+                ResourceFiles::new("/", generated)
+                    // Not useful because we have no static HTML files.
+                    .do_not_resolve_defaults()
+                    // Required when mounted on "/", otherwise all other
+                    // handlers are skipped.
+                    .skip_handler_when_not_found(),
+            )
             .service(get_tailwind)
             .service(index);
         let app = routes::add_routes(app);

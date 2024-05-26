@@ -9,9 +9,9 @@
     method="post"
     x-data="{createProfile: false}"
   >
-    <div class="my-2 border-2 border-slate-500 p-2">
-      <h2 class="text-xl font-bold">Account</h2>
-      <div class="py-2">
+    <fieldset class="my-2 border-2 border-slate-500 p-2">
+      <legend class="text-xl font-bold">Account</legend>
+      <div class="pb-2">
         <input type="hidden" name="secret" id="secret" value="{{ secret }}" />
         <label for="email">Email: </label>
         <input
@@ -19,6 +19,7 @@
           name="email"
           id="email"
           value="{{ email }}"
+          class="border-2 border-slate-100"
           required
           disabled
           {# User can't change their email because it's the one they oauth'd with. Also, the server remembers the email, so we don't have to bother including it in the form submission. #}
@@ -79,22 +80,21 @@
           >
         </p>
       </div>
-    </div>
-    <div class="my-2 border-2 border-slate-500 p-2">
-      <h2 class="text-xl font-bold">Profile</h2>
-      <div class="py-2">
+    </fieldset>
+    <fieldset class="my-2 border-2 border-slate-500 p-2" x-bind:class="{'border-slate-500': createProfile, 'border-slate-200': !createProfile}">
+      <legend class="text-xl font-bold">Profile</legend>
+      <div class="pb-2">
         <label for="create-profile">Create profile: </label>
         <input
           type="checkbox"
           name="create-profile"
           id="create-profile"
-          x-bind:value="createProfile"
-          x-on:click="createProfile = !createProfile"
+          x-model="createProfile"
         />
         <p>
           You can create a full profile now or later. A profile allows
           interaction and posting. If you don't intend to vote or post publicly,
-          you can skip this step.
+          you can skip this section.
         </p>
       </div>
       <div class="border-t-2 py-2">
@@ -109,27 +109,53 @@
           hx-trigger="keyup changed delay:1s"
           hx-target="#username-validation-target"
           hx-indicator="#username-spinner"
+          {# Intercept HTMX event for client-side-only errors. #}
+          hx-on::before-request="
+              const username = event.detail.requestConfig.parameters.username;
+              if (username.length < 3) {
+                event.preventDefault(); {# Cancel AJAX. #}
+                document.getElementById(
+                  'username-validation-target',
+                ).innerHTML =
+                  '<span class=\'text-amber-600\'>Username too short</span>';
+              } else if (!/^[a-zA-Z0-9]$/.test(username)) {
+                event.preventDefault(); {# Cancel AJAX. #}
+                document.getElementById(
+                  'username-validation-target',
+                ).innerHTML =
+                  '<span class=\'text-amber-600\'>Username contains unallowed characters</span>';
+              }"
           class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
         />
         <span id="username-validation-target"></span>
         <img
           id="username-spinner"
           class="htmx-indicator inline"
-          src="/static/spinner.svg"
+          src="/spinner.svg"
         />
-        <p>A username may contain letters or hyphens.</p>
+        <p>
+          A username may contain only letters or numbers, and must be at least
+          three characters long.
+        </p>
       </div>
-      <div class="border-t-2 py-2">
+      <div x-data="{bioText: ''}" class="border-t-2 py-2">
         <label for="bio">Bio: </label>
         <textarea
           name="bio"
           id="bio"
           placeholder="Bio"
+          x-model="bioText"
           x-bind:disabled="!createProfile"
           class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
         ></textarea>
+        (<span
+          id="bio-char-counter"
+          x-text="bioText.length"
+          x-bind:class="bioText.length > 500 ? 'text-amber-600' : ''"
+        ></span
+        >/500 characters)
       </div>
-    </div>
+    </fieldset>
     <div class="border-t-2 py-2">
       <input
         class="bg-green-200 px-2 py-0.5 font-bold hover:bg-green-400"

@@ -22,11 +22,13 @@ use oauth2::{
 };
 use rand::distributions::{Alphanumeric, DistString};
 use serde::Deserialize;
+use sqlx::Executor;
 use sqlx::Row;
 use std::collections::HashMap;
 use std::thread;
 use uuid::Uuid;
 
+use crate::app_state::CompiledRegex;
 use crate::app_state::{AppConfig, AppState};
 use crate::key;
 use crate::partials;
@@ -441,12 +443,26 @@ async fn create_session<'a>(
         .finish())
 }
 
+fn valid_username(regex: &CompiledRegex, username: &str) -> bool {
+    username.len() >= 3 && regex.alphanumeric.is_match(username)
+}
+
 #[post("/auth/create_account")]
 pub async fn create_account(
     app_state: web::Data<AppState>,
     form: web::Form<RegisterUserFormData>,
     request: HttpRequest,
 ) -> impl Responder {
+    if form.create_profile.as_ref().is_some_and(|x| x == "on")
+        && (form.username.is_none()
+            || form
+                .username
+                .as_ref()
+                .is_some_and(|x| valid_username(&app_state.regex, x)))
+    {
+        return HttpResponse::BadRequest().body("Bad username");
+    }
+
     let email = match app_state
         .redis_pool
         .getdel::<Option<String>, _>(key::new_account_secret(&form.secret))
@@ -463,22 +479,56 @@ pub async fn create_account(
         }
     };
 
-    let id: Uuid = match sqlx::query(
-        r#"
-        insert into account (email)
-        values ($1)
-        returning id
-        "#,
-    )
-    .bind(&email)
-    .fetch_one(&app_state.db_pool)
-    .await
+    // Create a transaction for both creating the account and the profile.
+    let mut transaction = match app_state.db_pool.begin().await {
+        Err(err) => {
+            error!("Database error when creating transaction: {err}");
+            return HttpResponse::InternalServerError().body("Error creating account. Try again?");
+        }
+        Ok(transaction) => transaction,
+    };
+
+    let id: Uuid = match transaction
+        .fetch_one(
+            sqlx::query(
+                r#"
+                insert into account (email)
+                values ($1)
+                returning id
+                "#,
+            )
+            .bind(&email),
+        )
+        .await
     {
         Err(err) => {
             return HttpResponse::InternalServerError().body("Error creating account. Try again?")
         }
         Ok(row) => row.get(0),
     };
+
+    if let Err(err) = transaction
+        .execute(
+            sqlx::query(
+                r#"
+                insert into profile (id, username, bio)
+                values ($1, $2, $3)
+                "#,
+            )
+            .bind(id)
+            .bind(&form.username)
+            .bind(&form.bio),
+        )
+        .await
+    {
+        error!("Database error when creating profile: {err}");
+        return HttpResponse::InternalServerError().body("Error creating account. Try again?");
+    }
+
+    if let Err(err) = transaction.commit().await {
+        error!("Database error when committing: {err}");
+        return HttpResponse::InternalServerError().body("Error creating account. Try again?");
+    }
 
     match create_session(
         &app_state.redis_pool,
@@ -532,7 +582,7 @@ pub async fn cancel_create_account(
 
     partials::MessagePageTemplate {
         config: &app_state.config,
-        message: "Account creation cancelled. If you want to create a new account, start over.",
+        message: "Account creation cancelled; your information has been forgotten. If you want to create a new account, start over.",
     }
     .to_response()
 }

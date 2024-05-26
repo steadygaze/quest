@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+  <head>
+    <title>
+      {{ status.as_str() }} {{ status.canonical_reason()|nonetoempty }}
+    </title>
+    <link rel="stylesheet" href="/tailwind.css" />
+    {# <script src="https://unpkg.com/htmx.org@1.9" defer></script> #}
+    {# <script src="https://unpkg.com/alpinejs@3" defer></script> #}
+  </head>
+  <body class="bg-slate-300">
+    <div class="container mx-auto mt-2">
+      <div
+        class="mx-2 mx-auto w-full max-w-prose border-4 border-slate-500 bg-slate-50 p-2 [border-style:ridge]"
+      >
+        <h1 class="mb-1 text-2xl">
+          {{ status.as_str() }} {{ status.canonical_reason()|nonetoempty }}
+        </h1>
+        <p class="m-1 text-amber-600">{{ message }}</p>
+        <p class="m-1">
+          If this is unexpected, try again or do something else. If this keeps
+          happening and isn't a known issue, consider contacting the webmaster.
+        </p>
+        <ul class="ml-4 list-disc">
+          <li>
+            <a
+              class="m-1 font-bold underline decoration-dashed hover:decoration-solid"
+              href="/"
+              >Go home</a
+            >
+          </li>
+          <li>
+            <a
+              class="m-1 font-bold underline decoration-dashed hover:decoration-solid"
+              href="javascript:history.back()"
+              >Go back to the previous page</a
+            >&mdash; this may not work.
+          </li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>
