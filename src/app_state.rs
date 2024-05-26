@@ -1,3 +1,4 @@
+use config::{builder::DefaultState, Config, ConfigBuilder, ConfigError};
 use fred::clients::RedisPool;
 use oauth2::basic::BasicClient;
 use serde::Deserialize;
@@ -33,4 +34,11 @@ pub struct AppConfig {
     pub port: u16,
     pub redis_url: String,
     pub site_name: String,
+}
+
+/// Create a config builder with default values set.
+pub fn config_with_defaults() -> Result<ConfigBuilder<DefaultState>, ConfigError> {
+    Ok(Config::builder()
+        .set_default("site_name", "Quest")?
+        .set_default("port", 8080)?)
 }

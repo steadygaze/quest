@@ -17,6 +17,15 @@
           {{ status.as_str() }} {{ status.canonical_reason()|nonetoempty }}
         </h1>
         <p class="m-1 text-amber-600">{{ message }}</p>
+        {% match backtrace.status() %}
+          {% when Captured %}
+          <pre>
+            <code>
+              {{ backtrace }}
+            </code>
+          </pre>
+          {% when _ %}
+        {% endmatch %}
         <p class="m-1">
           If this is unexpected, try again or do something else. If this keeps
           happening and isn't a known issue, consider contacting the webmaster.

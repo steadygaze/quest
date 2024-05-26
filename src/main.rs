@@ -10,7 +10,6 @@ use actix_web_static_files::ResourceFiles;
 use askama_actix::Template;
 use askama_actix::TemplateToResponse;
 use concat_arrays::concat_arrays;
-use config::Config;
 use env_logger::Env;
 use fred::interfaces::ClientLike;
 use listenfd::ListenFd;
@@ -59,8 +58,7 @@ async fn main() -> Result<(), sqlx::Error> {
     dotenvy::dotenv().ok();
     env_logger::init_from_env(Env::default().default_filter_or("info,quest=trace"));
 
-    let config: AppConfig = Config::builder()
-        .set_default("SITE_NAME", "Quest")
+    let config: AppConfig = app_state::config_with_defaults()
         .unwrap()
         .add_source(
             config::Environment::with_prefix("QUEST"), // .try_parsing(true)

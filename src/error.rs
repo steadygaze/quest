@@ -1,3 +1,4 @@
+use std::backtrace::Backtrace;
 use std::fmt::Display;
 
 /// Error handling code, specifically for actix-web. Without this, we won't be
@@ -51,17 +52,24 @@ mod filters {
 #[derive(Template)]
 #[template(path = "error.html")]
 pub struct ErrorTemplate<'a> {
+    pub backtrace: &'a Backtrace,
     pub status: &'a StatusCode,
     pub message: &'a String,
 }
 
 impl error::ResponseError for QuestServerError {
     fn error_response(&self) -> HttpResponse {
+        let backtrace = if cfg!(debug_assertions) {
+            Backtrace::force_capture()
+        } else {
+            Backtrace::disabled()
+        };
         let status_code = self.status_code();
         HttpResponse::build(status_code)
             .content_type(ContentType::html())
             .body(
                 ErrorTemplate {
+                    backtrace: &backtrace,
                     status: &status_code,
                     message: &self.to_string(),
                 }
@@ -84,6 +92,7 @@ pub fn custom_404<B>(
     let (req, res) = res.into_parts();
     let res = res.set_body(
         ErrorTemplate {
+            backtrace: &Backtrace::disabled(),
             status: &StatusCode::NOT_FOUND,
             message: &format!("The page \"{}\" doesn't exist.", req.path()),
         }

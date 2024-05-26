@@ -247,20 +247,31 @@ pub async fn discord_callback(
     // We have to set up revoking the token regardless of the result, which
     // requires this intervening block here.
     {
+        trace!("About to revoke the token");
         let oauth_client = app_state.oauth_client.clone();
-        // Token revocation is not async for some reason, and also we don't care
-        // if revoking the token fails, because it's not on the critical path,
-        // so we create a new thread.
-        thread::spawn(move || {
+        // We don't care if revoking the token fails, because it's not on the
+        // critical path, so we create a new thread.
+        thread::spawn(move || async move {
+            env_logger::init_from_env(
+                env_logger::Env::default().default_filter_or("info,quest=trace"),
+            );
+            log::info!("In the thread revoking the token");
             let token_to_revoke: StandardRevocableToken = match token_response.refresh_token() {
                 Some(token) => token.into(),
                 None => token_response.access_token().into(),
             };
-            if let Some(err) = oauth_client.revoke_token(token_to_revoke).err() {
-                warn!("Ignored error revoking Discord token: {}", err);
-            } else {
-                trace!("Token revocation successful");
-            }
+            match oauth_client.revoke_token(token_to_revoke) {
+                Err(err) => {
+                    warn!("Ignored configuration error revoking Discord token: {err}");
+                }
+                Ok(revocation_request) => {
+                    if let Err(err) = revocation_request.request_async(async_http_client).await {
+                        warn!("Ignored error revoking Discord token: {err}")
+                    } else {
+                        trace!("Token revocation successful");
+                    }
+                }
+            };
         });
     }
 
