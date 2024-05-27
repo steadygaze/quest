@@ -1,4 +1,4 @@
-use std::backtrace::Backtrace;
+use std::backtrace::{Backtrace, BacktraceStatus};
 use std::fmt::Display;
 
 /// Error handling code, specifically for actix-web. Without this, we won't be
@@ -13,24 +13,38 @@ use actix_web::{
     HttpResponse,
 };
 use askama::Template;
-use fred::error::RedisError;
 
 /// Common errors that can be unwrapped in handlers.
-#[derive(Debug)]
-enum QuestServerError {
-    DatabaseError(sqlx::Error),
-    RedisError(RedisError),
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    // We can't use #[error] because of special handling for InternalError.
+    InternalError(#[from] anyhow::Error),
+    AuthError(String),
+    AppError(String),
 }
 
-impl Display for QuestServerError {
+/// Convenience alias.
+pub type Result<T> = std::result::Result<T, Error>;
+
+impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if cfg!(debug_assertions) {
             match self {
-                QuestServerError::DatabaseError(err) => {
-                    write!(f, "Database error: {}", err)?;
+                // For security reasons, we shouldn't show detailed error
+                // messages in production:
+                // https://owasp.org/www-community/Improper_Error_Handling
+                Error::InternalError(err) => {
+                    if cfg!(debug_assertions) {
+                        write!(f, "Internal error: {:?}", err)?;
+                    } else {
+                        write!(f, "Internal error: {}", err)?;
+                    }
                 }
-                QuestServerError::RedisError(err) => {
-                    write!(f, "Redis error: {}", err)?;
+                Error::AuthError(err) => {
+                    write!(f, "{err}")?;
+                }
+                Error::AppError(err) => {
+                    write!(f, "{err}")?;
                 }
             }
         } else {
@@ -57,19 +71,20 @@ pub struct ErrorTemplate<'a> {
     pub message: &'a String,
 }
 
-impl error::ResponseError for QuestServerError {
+impl error::ResponseError for Error {
     fn error_response(&self) -> HttpResponse {
-        let backtrace = if cfg!(debug_assertions) {
-            Backtrace::force_capture()
+        // let backtrace = &Backtrace::force_capture();
+        let backtrace = if let Error::InternalError(anyhow_err) = &self {
+            &anyhow_err.backtrace()
         } else {
-            Backtrace::disabled()
+            &Backtrace::disabled()
         };
         let status_code = self.status_code();
         HttpResponse::build(status_code)
             .content_type(ContentType::html())
             .body(
                 ErrorTemplate {
-                    backtrace: &backtrace,
+                    backtrace,
                     status: &status_code,
                     message: &self.to_string(),
                 }
@@ -79,7 +94,9 @@ impl error::ResponseError for QuestServerError {
 
     fn status_code(&self) -> StatusCode {
         match self {
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::AuthError(_) => StatusCode::UNAUTHORIZED,
+            Error::AppError(_) => StatusCode::BAD_REQUEST,
         }
     }
 }

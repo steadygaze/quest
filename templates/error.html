@@ -4,7 +4,7 @@
     <title>
       {{ status.as_str() }} {{ status.canonical_reason()|nonetoempty }}
     </title>
-    <link rel="stylesheet" href="/tailwind.css" />
+    <link rel="stylesheet" href="/css/tailwind.css" />
     {# <script src="https://unpkg.com/htmx.org@1.9" defer></script> #}
     {# <script src="https://unpkg.com/alpinejs@3" defer></script> #}
   </head>
@@ -18,19 +18,18 @@
         </h1>
         <p class="m-1 text-amber-600">{{ message }}</p>
         {% match backtrace.status() %}
-          {% when Captured %}
-          <pre>
-            <code>
-              {{ backtrace }}
-            </code>
-          </pre>
-          {% when _ %}
+          {% when BacktraceStatus::Captured %}
+          <pre><code>
+{{ backtrace }}
+          </code></pre>
+        {% else %}
+
         {% endmatch %}
         <p class="m-1">
           If this is unexpected, try again or do something else. If this keeps
           happening and isn't a known issue, consider contacting the webmaster.
         </p>
-        <ul class="ml-4 list-disc">
+        <ul class="ml-8 list-disc">
           <li>
             <a
               class="m-1 font-bold underline decoration-dashed hover:decoration-solid"
@@ -43,7 +42,7 @@
               class="m-1 font-bold underline decoration-dashed hover:decoration-solid"
               href="javascript:history.back()"
               >Go back to the previous page</a
-            >&mdash; this may not work.
+            >&mdash; this may not always work as expected.
           </li>
         </ul>
       </div>

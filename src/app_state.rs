@@ -2,16 +2,10 @@ use config::{builder::DefaultState, Config, ConfigBuilder, ConfigError};
 use fred::clients::RedisPool;
 use oauth2::basic::BasicClient;
 use serde::Deserialize;
-use std::sync::Arc;
-
-pub type FnBox = Box<dyn FnOnce() + Send + 'static>;
 
 /// Actix state object for dependency injection.
 #[derive(Clone)]
 pub struct AppState {
-    /// Send a task to be executed by a background thread, not returning any
-    /// result.
-    pub background_sender: Arc<crossbeam_channel::Sender<FnBox>>,
     pub config: AppConfig,
     pub db_pool: sqlx::postgres::PgPool,
     pub redis_pool: RedisPool,

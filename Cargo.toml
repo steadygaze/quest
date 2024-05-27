@@ -31,6 +31,9 @@ actix-web-static-files = "4.0.1"
 listenfd = "1.0.1"
 config = { version = "0.14.0", default-features = false }
 crossbeam-channel = "0.5.13"
+tokio = { version = "1.37.0", features = ["rt"] }
+thiserror = "1.0.61"
+anyhow = "1.0.86"
 
 [build-dependencies]
 static-files = "0.2"

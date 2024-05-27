@@ -1,17 +1,21 @@
 /// Code related to verifying user permissions.
 
-/// Mutually exclusive roles related to site administration.
+/// Mutually exclusive roles related to moderation.
 enum AdminRole {
-    /// Disabled account.
-    DISABLED,
     /// Unprivileged user. May or may not be a questmaster.
-    USER,
+    User,
     /// Site-level moderator. Capable of making moderation decisions on any
     /// quest.
-    SITE_MODERATOR,
+    SiteModerator,
     /// Site-level administrator. Elevated permissions compared to other
     /// moderators, including appointing new moderators.
-    ADMINISTRATOR,
-    /// Site operator. Complete and total moderator and technical permissions.
-    OPERATOR,
+    Administrator,
+}
+
+/// Mutually exclusive roles related to
+enum TechRole {
+    /// Unprivileged user.
+    User,
+    /// Technical administrator/site operator.
+    Operator,
 }

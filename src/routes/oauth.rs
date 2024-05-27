@@ -1,9 +1,9 @@
 // use actix_web::dev::HttpServiceFactory;
 use actix_web::dev::ServiceFactory;
 use actix_web::dev::ServiceRequest;
-use actix_web::web::Either;
 use actix_web::HttpRequest;
 use actix_web::{cookie, get, post, web, HttpResponse, Responder};
+use anyhow::Context;
 use askama::Template;
 use askama_actix::TemplateToResponse;
 use awc::cookie::Cookie;
@@ -14,7 +14,8 @@ use fred::interfaces::HashesInterface;
 use fred::interfaces::KeysInterface;
 use fred::interfaces::TransactionInterface;
 use fred::prelude::RedisValue;
-use log::{error, trace, warn};
+use log::info;
+use log::{trace, warn};
 use oauth2::reqwest::async_http_client;
 use oauth2::{
     AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, Scope,
@@ -25,11 +26,11 @@ use serde::Deserialize;
 use sqlx::Executor;
 use sqlx::Row;
 use std::collections::HashMap;
-use std::thread;
 use uuid::Uuid;
 
 use crate::app_state::CompiledRegex;
 use crate::app_state::{AppConfig, AppState};
+use crate::error::{Error, Result};
 use crate::key;
 use crate::partials;
 
@@ -66,7 +67,7 @@ pub async fn test(app_state: web::Data<AppState>) -> impl Responder {
 
 /// Start Discord oauth by generating a PKCE challenge and redirecting.
 #[get("/auth/discord/start")]
-pub async fn discord_start(app_state: web::Data<AppState>) -> impl Responder {
+pub async fn discord_start(app_state: web::Data<AppState>) -> Result<impl Responder> {
     // Generate a PKCE challenge.
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
@@ -80,7 +81,7 @@ pub async fn discord_start(app_state: web::Data<AppState>) -> impl Responder {
         .set_pkce_challenge(pkce_challenge)
         .url();
 
-    match app_state
+    app_state
         .redis_pool
         .set::<String, _, _>(
             key::oauth_secret(csrf_token.secret()),
@@ -90,19 +91,10 @@ pub async fn discord_start(app_state: web::Data<AppState>) -> impl Responder {
             false,
         )
         .await
-    {
-        Ok(_) => {
-            trace!("Stored CSRF challenge successfully");
-        }
-        Err(err) => {
-            return Either::Left(HttpResponse::InternalServerError().body(format!(
-                "Tried to store oauth challenge but got error: {}",
-                err
-            )));
-        }
-    };
+        .context("Failed to store oauth challenge")?;
+    trace!("Stored CSRF challenge successfully");
 
-    Either::Right(web::Redirect::to(<oauth2::url::Url as Into<String>>::into(auth_url)).see_other())
+    Ok(web::Redirect::to(<oauth2::url::Url as Into<String>>::into(auth_url)).see_other())
 }
 
 /// URL params expected when Discord redirects back after oauth.
@@ -139,31 +131,29 @@ pub async fn discord_callback(
     app_state: web::Data<AppState>,
     params: web::Query<DiscordOauthRedirectParams>,
     request: HttpRequest,
-) -> impl Responder {
+) -> Result<impl Responder> {
     trace!("Got oauth params: {:?}", params);
     let params = params.into_inner();
+    use DiscordOauthRedirectParams as Params;
 
     // Guard against Redis key injection.
     let state = match &params {
-        DiscordOauthRedirectParams::DiscordOauthOk { state, .. } => state,
-        DiscordOauthRedirectParams::DiscordApiError { state, .. } => state,
+        Params::DiscordOauthOk { state, .. } => state,
+        Params::DiscordApiError { state, .. } => state,
     };
     if state.len() > 64 || !app_state.regex.oauth_state_ok.is_match(state.as_str()) {
-        return HttpResponse::BadRequest().body("Bad oauth state token");
+        return Err(Error::AppError("Bad oauth state token".to_string()));
     }
 
     let (oauth_code, oauth_state) = match params {
-        DiscordOauthRedirectParams::DiscordOauthOk { code, state } => (code, state),
-        DiscordOauthRedirectParams::DiscordApiError {
+        Params::DiscordOauthOk { code, state } => (code, state),
+        Params::DiscordApiError {
             error,
             error_description,
             state,
         } => {
             // We don't care if the query succeeds because there is a main error already.
-            thread::spawn(|| async move {
-                let state = state.clone();
-                let pool = app_state.db_pool.clone();
-
+            tokio::spawn(async move {
                 match app_state
                     .redis_pool
                     .del::<i64, _>(key::oauth_secret(&state))
@@ -186,51 +176,40 @@ pub async fn discord_callback(
             });
 
             if error == "access_denied" {
-                return HttpResponse::Unauthorized()
-                    .body("Access denied by Discord. Try again, but accept the prompt to grant permissions.");
+                return Err(Error::AuthError("Access denied by Discord. Try again, but accept the prompt to grant permissions.".to_string()));
             } else {
-                return HttpResponse::InternalServerError().body(format!(
+                return Err(Error::InternalError(anyhow::anyhow!(
                     "Unknown error response from Discord API: error: {}, error_description: {}",
-                    error, error_description
-                ));
+                    error,
+                    error_description
+                )));
             }
         }
     };
 
-    let result = app_state
+    let pkce_verifier = match app_state
         .redis_pool
         .getdel::<Option<String>, _>(key::oauth_secret(&oauth_state))
-        .await;
-
-    let pkce_verifier = match result {
-        Ok(None) => {
-            return HttpResponse::BadRequest().body("Couldn't find pending oauth request");
-        }
-        Err(err) => {
-            return HttpResponse::InternalServerError().body(format!(
-                "Redis error while retrieving oauth record: {}",
-                err
+        .await
+        .context("Failed to retrieve pending oauth record")?
+    {
+        None => {
+            return Err(Error::AppError(
+                "Couldn't find pending oauth request".to_string(),
             ));
         }
-        Ok(Some(verifier)) => verifier,
+        Some(verifier) => verifier,
     };
-    // Invariant params.state == csrf_token already checked with Redis.
 
     // Now you can trade it for an access token.
-    let token_response = match app_state
+    let token_response = app_state
         .oauth_client
         .exchange_code(AuthorizationCode::new(oauth_code))
         // Set the PKCE code verifier.
         .set_pkce_verifier(PkceCodeVerifier::new(pkce_verifier))
         .request_async(async_http_client)
         .await
-    {
-        Ok(resp) => resp,
-        Err(err) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Error while retrieving oauth token: {}", err));
-        }
-    };
+        .context("Failed to retrieve oauth token")?;
 
     let client = Client::default();
     let discord_response_result = client
@@ -251,11 +230,7 @@ pub async fn discord_callback(
         let oauth_client = app_state.oauth_client.clone();
         // We don't care if revoking the token fails, because it's not on the
         // critical path, so we create a new thread.
-        thread::spawn(move || async move {
-            env_logger::init_from_env(
-                env_logger::Env::default().default_filter_or("info,quest=trace"),
-            );
-            log::info!("In the thread revoking the token");
+        tokio::spawn(async move {
             let token_to_revoke: StandardRevocableToken = match token_response.refresh_token() {
                 Some(token) => token.into(),
                 None => token_response.access_token().into(),
@@ -275,20 +250,15 @@ pub async fn discord_callback(
         });
     }
 
-    let discord_email = match discord_response_result {
-        Ok(mut response) => match response.json::<DiscordUser>().await {
-            Ok(user) => user,
-            Err(err) => {
-                return HttpResponse::InternalServerError()
-                    .body(format!("Error decoding response from Discord API: {}", err));
-            }
-        },
-        Err(err) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Error getting email from Discord API: {}", err));
-        }
-    }
-    .email;
+    let discord_email = discord_response_result
+        // There is probably some information loss here, but I'm not sure how to
+        // get anyhow to accept a SendRequestError.
+        .map_err(|e| anyhow::anyhow!(e.to_string()))
+        .context("Failed to check user email with Discord API")?
+        .json::<DiscordUser>()
+        .await
+        .context("Failed to decode response from Discord API")?
+        .email;
 
     match sqlx::query_as::<_, (Uuid,)>(
         r#"
@@ -301,75 +271,62 @@ pub async fn discord_callback(
     .bind(&discord_email)
     .fetch_optional(&app_state.db_pool)
     .await
+    .context("Failed to check if user's account exists")?
     {
-        Ok(Some((user_id,))) => {
+        Some((user_id,)) => {
             let previous_session = request.cookie(SESSION_ID_COOKIE);
             if previous_session.is_some() {
                 trace!("Clearing a previous session on new login");
             }
             // Regular login for existing user.
-            return match create_session(
-                &app_state.redis_pool,
-                user_id.to_string(),
-                previous_session,
-            )
-            .await
-            {
-                Ok(cookie) => {
-                    let mut response =
-                        HttpResponse::Ok().body(format!("You are logged in as: {}", discord_email));
-                    if let Err(err) = response.add_cookie(&cookie) {
-                        error!("Error setting session cookie: {err}");
-                    }
-                    response
-                }
-                Err(err) => {
-                    error!("Error creating session: {err}");
-                    return HttpResponse::InternalServerError()
-                        .body("Error logging in. Try again?");
-                }
-            };
+            let cookie =
+                create_session(&app_state.redis_pool, user_id.to_string(), previous_session)
+                    .await
+                    .context("Failed to record new session")?;
+
+            let mut response =
+                HttpResponse::Ok().body(format!("You are logged in as: {}", discord_email));
+            response
+                .add_cookie(&cookie)
+                .context("Error setting session cookie on request")?;
+            return Ok(response);
         }
-        Err(err) => {
-            return HttpResponse::InternalServerError().body(format!(
-                "Error checking account status for {}: {}",
-                discord_email, err
-            ));
-        }
-        Ok(None) => (), // Success, but now we must create an account.
+        None => (), // Success, but now we must create an account.
     }
 
+    let mut new_account_secret;
     // Store an account secret to be passed back, indicating there is a pending
-    // account creation.
-    let new_account_secret = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
-    match app_state
-        .redis_pool
-        .set::<Option<String>, _, _>(
-            key::new_account_secret(&new_account_secret),
-            &discord_email,
-            Some(fred::types::Expiration::EX(ACCOUNT_CREATION_TIMEOUT_SEC)),
-            Some(fred::types::SetOptions::NX),
-            true,
-        )
-        .await
-    {
-        Ok(Some(existing_value)) => {
-            return HttpResponse::InternalServerError()
-                .body("Generated random duplicate account secret! Try again.");
-        }
-        Err(err) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Error storing account secret: {}", err));
-        }
-        Ok(None) => (), // Success.
-    };
+    // account creation. This is a loop because there is an extremely small
+    // chance of accidentally generating a duplicate account secret.
+    loop {
+        new_account_secret = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
+        match app_state
+            .redis_pool
+            .set::<Option<String>, _, _>(
+                key::new_account_secret(&new_account_secret),
+                &discord_email,
+                Some(fred::types::Expiration::EX(ACCOUNT_CREATION_TIMEOUT_SEC)),
+                Some(fred::types::SetOptions::NX), // Don't override existing secret.
+                true,
+            )
+            .await
+            .context("Failed to record in-progress account creation")?
+        {
+            Some(_existing_value) => {
+                info!("Generated random duplicate account creation secret! This should never happen (1 in 62^32 chance); you are extremely \"lucky\". :)");
+            }
+            None => {
+                break;
+            } // Success.
+        };
+    }
 
-    CreateAccountTemplate {
+    Ok(CreateAccountTemplate {
         config: &app_state.config,
         email: discord_email.as_str(),
         secret: new_account_secret.as_str(),
     }
-    .to_response()
+    .to_response())
 }
 // TODO - Add session cookie.
 
@@ -377,8 +334,6 @@ pub async fn discord_callback(
 #[derive(Debug, Deserialize)]
 struct RegisterUserFormData {
     secret: String,
-    #[serde(rename = "tos-ack")]
-    tos_ack: String, // "on" or "off"
     #[serde(rename = "create-profile")]
     create_profile: Option<String>, // "on" or "off"
     username: Option<String>,
@@ -418,7 +373,7 @@ pub async fn check_if_user_already_exists(
             text: format!("@{username} is available").as_str(),
         }
         .to_response(),
-        Err(err) => HttpResponse::InternalServerError().body("database error"),
+        Err(_) => HttpResponse::InternalServerError().body("database error"),
     }
 }
 
@@ -426,7 +381,7 @@ async fn create_session<'a>(
     redis_pool: &'a RedisPool,
     user_id: String,
     previous_session: Option<Cookie<'_>>,
-) -> Result<Cookie<'a>, RedisError> {
+) -> std::result::Result<Cookie<'a>, RedisError> {
     let session_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
     let transaction = redis_pool.multi();
     if let Some(previous_session) = previous_session {
@@ -444,14 +399,19 @@ async fn create_session<'a>(
         .await;
     transaction.exec::<(RedisValue, RedisValue)>(true).await?;
 
-    Ok(Cookie::build(SESSION_ID_COOKIE, session_id)
+    let mut cookie_builder = Cookie::build(SESSION_ID_COOKIE, session_id)
         .path("/")
         .http_only(true)
-        // .secure(true) // TODO: Set up https testing.
         .max_age(cookie::time::Duration::seconds(SESSION_TTL_SEC))
         // Must be lax to be sent with login redirect and to be logged in when navigating from externally linked pages.
-        .same_site(cookie::SameSite::Lax)
-        .finish())
+        .same_site(cookie::SameSite::Lax);
+    if !cfg!(debug_assertions) {
+        // In production, we will likely use a reverse proxy like Nginx or
+        // Cloudflare to implement SSL. Otherwise we would have to set up
+        // self-signed certificates in a dev environment, which would be a pain.
+        cookie_builder = cookie_builder.secure(true);
+    }
+    return Ok(cookie_builder.finish());
 }
 
 fn valid_username(regex: &CompiledRegex, username: &str) -> bool {
@@ -463,7 +423,7 @@ pub async fn create_account(
     app_state: web::Data<AppState>,
     form: web::Form<RegisterUserFormData>,
     request: HttpRequest,
-) -> impl Responder {
+) -> Result<impl Responder> {
     if form.create_profile.as_ref().is_some_and(|x| x == "on")
         && (form.username.is_none()
             || form
@@ -471,35 +431,31 @@ pub async fn create_account(
                 .as_ref()
                 .is_some_and(|x| valid_username(&app_state.regex, x)))
     {
-        return HttpResponse::BadRequest().body("Bad username");
+        return Err(Error::AppError("Bad username".to_string()));
     }
 
     let email = match app_state
         .redis_pool
         .getdel::<Option<String>, _>(key::new_account_secret(&form.secret))
         .await
+        .context("Failed to get pending account creation state")?
     {
-        Err(err) => {
-            warn!("Couldn't get pending account creation state: {}", err);
-            return HttpResponse::InternalServerError()
-                .body("Couldn't get pending account creation state");
-        }
-        Ok(Some(value)) => value,
-        Ok(None) => {
-            return HttpResponse::InternalServerError().body("No pending account creation");
+        Some(value) => value,
+        None => {
+            return Err(Error::AppError(
+                "No record of pending account creation. It could've expired.".to_string(),
+            ));
         }
     };
 
     // Create a transaction for both creating the account and the profile.
-    let mut transaction = match app_state.db_pool.begin().await {
-        Err(err) => {
-            error!("Database error when creating transaction: {err}");
-            return HttpResponse::InternalServerError().body("Error creating account. Try again?");
-        }
-        Ok(transaction) => transaction,
-    };
+    let mut transaction = app_state
+        .db_pool
+        .begin()
+        .await
+        .context("Failed to create transaction for account creation")?;
 
-    let id: Uuid = match transaction
+    let id: Uuid = transaction
         .fetch_one(
             sqlx::query(
                 r#"
@@ -511,104 +467,80 @@ pub async fn create_account(
             .bind(&email),
         )
         .await
-    {
-        Err(err) => {
-            return HttpResponse::InternalServerError().body("Error creating account. Try again?")
-        }
-        Ok(row) => row.get(0),
-    };
+        .context("Failed to create new account")?
+        .get(0);
 
-    if let Err(err) = transaction
-        .execute(
-            sqlx::query(
-                r#"
-                insert into profile (id, username, bio)
-                values ($1, $2, $3)
-                "#,
+    if form.create_profile.as_ref().is_some_and(|x| x == "on") {
+        transaction
+            .execute(
+                sqlx::query(
+                    r#"
+                    insert into profile (id, username, bio)
+                    values ($1, $2, $3)
+                    "#,
+                )
+                .bind(id)
+                .bind(&form.username)
+                .bind(&form.bio),
             )
-            .bind(id)
-            .bind(&form.username)
-            .bind(&form.bio),
-        )
+            .await
+            .context("Failed to create profile")?;
+    }
+
+    transaction
+        .commit()
         .await
-    {
-        error!("Database error when creating profile: {err}");
-        return HttpResponse::InternalServerError().body("Error creating account. Try again?");
-    }
+        .context("Failed to commit account creation")?;
 
-    if let Err(err) = transaction.commit().await {
-        error!("Database error when committing: {err}");
-        return HttpResponse::InternalServerError().body("Error creating account. Try again?");
-    }
-
-    match create_session(
+    let cookie = create_session(
         &app_state.redis_pool,
         id.to_string(),
         request.cookie(SESSION_ID_COOKIE),
     )
     .await
-    {
-        Ok(cookie) => {
-            let mut response = partials::MessagePageTemplate {
-                config: &app_state.config,
-                message: "Account created successfully. You are now logged in.",
-            }
-            .to_response();
-            if let Err(err) = response.add_cookie(&cookie) {
-                error!("Couldn't set cookie: {}", err);
-            }
-            response
-        }
-        Err(err) => {
-            error!("Couldn't create session (after creating new user): {err}");
-            return partials::FailureTemplate {
-                text: "Couldn't create session; try logging in again.",
-            }
-            .to_response();
-        }
+    .context("Failed to create new session after account creation")?;
+    let mut response = partials::MessagePageTemplate {
+        config: &app_state.config,
+        message: "Account created successfully. You are now logged in.",
     }
+    .to_response();
+    response
+        .add_cookie(&cookie)
+        .context("Couldn't set session cookie")?;
+    Ok(response)
 }
 
 #[post("/auth/cancel_create_account")]
 pub async fn cancel_create_account(
     app_state: web::Data<AppState>,
     form: web::Form<RegisterUserFormData>,
-) -> impl Responder {
-    match app_state
+) -> Result<impl Responder> {
+    // We don't care if we didn't remove anything; the key could've expired.
+    let _rows_deleted = app_state
         .redis_pool
         .del::<String, _>(key::new_account_secret(&form.secret))
         .await
-    {
-        Err(err) => {
-            warn!(
-                "Error talking to Redis when cancelling account creation: {}",
-                err
-            );
-            // This doesn't need to be a user-visible error. The key should
-            // expire anyway.
-        }
-        Ok(_) => (), // We don't care if we didn't remove anything; the key
-                     // could've expired.
-    };
+        .context("Failed to clean up account creation secret")?;
 
-    partials::MessagePageTemplate {
+    Ok(partials::MessagePageTemplate {
         config: &app_state.config,
         message: "Account creation cancelled; your information has been forgotten. If you want to create a new account, start over.",
     }
-    .to_response()
+    .to_response())
 }
 
 #[get("/auth/logout")]
-pub async fn logout(app_state: web::Data<AppState>, request: HttpRequest) -> impl Responder {
+pub async fn logout(
+    app_state: web::Data<AppState>,
+    request: HttpRequest,
+) -> Result<impl Responder> {
     if let Some(mut session_id) = request.cookie(SESSION_ID_COOKIE) {
         trace!("Logging out session {:?}", session_id);
-        if let Err(err) = app_state
+        app_state
             .redis_pool
             .del::<String, _>(key::session(&session_id.value()))
             .await
-        {
-            error!("Failed to clear session {}: {}", &session_id.value(), err)
-        }
+            .context("Failed to clear session")?;
 
         let mut response = partials::MessagePageTemplate {
             config: &app_state.config,
@@ -619,22 +551,16 @@ pub async fn logout(app_state: web::Data<AppState>, request: HttpRequest) -> imp
         // We must re-set some attributes that aren't transmitted with the
         // cookie in the request, otherwise removal won't work.
         session_id.set_path("/");
-        if let Err(err) = response.add_removal_cookie(&session_id) {
-            error!("Failed to set removal cookie");
-            return partials::MessagePageTemplate {
-                config: &app_state.config,
-                message: "Couldn't log you out for some reason. Try again?",
-            }
-            .to_response();
-        };
-
         response
+            .add_removal_cookie(&session_id)
+            .context("Failed to set removal cookie")?;
+        Ok(response)
     } else {
-        partials::MessagePageTemplate {
+        Ok(partials::MessagePageTemplate {
             config: &app_state.config,
             message: "You were already logged out.",
         }
-        .to_response()
+        .to_response())
     }
 }
 

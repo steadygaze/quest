@@ -13,17 +13,16 @@ use concat_arrays::concat_arrays;
 use env_logger::Env;
 use fred::interfaces::ClientLike;
 use listenfd::ListenFd;
-use log::warn;
 use regex::Regex;
-use std::sync::Arc;
-use std::thread;
 
 mod app_state;
 mod error;
 mod key;
 mod oauth;
 mod partials;
+mod permissions;
 mod routes;
+mod session;
 
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
@@ -44,7 +43,7 @@ pub async fn index(app_state: web::Data<AppState>, request: HttpRequest) -> impl
     .to_response()
 }
 
-#[get("/tailwind.css")]
+#[get("/css/tailwind.css")]
 pub async fn get_tailwind() -> impl Responder {
     HttpResponse::Ok()
         .content_type(http::header::ContentType(mime::TEXT_CSS))
@@ -92,21 +91,8 @@ async fn main() -> Result<(), sqlx::Error> {
         oauth_state_ok: Regex::new(r"^[0-9A-Za-z+/_-]+=*$").expect("failed to compile regex"),
     };
 
-    let (sender, receiver) = crossbeam_channel::unbounded::<app_state::FnBox>();
-    thread::spawn(move || async move {
-        loop {
-            match receiver.recv() {
-                Ok(fn_box) => fn_box(),
-                Err(err) => {
-                    warn!("Error dequeueing background work: {err}");
-                }
-            }
-        }
-    });
-
     let port = config.port.clone();
     let app_state = AppState {
-        background_sender: Arc::new(sender),
         config,
         db_pool,
         redis_pool,
@@ -146,6 +132,7 @@ async fn main() -> Result<(), sqlx::Error> {
         server.bind(("127.0.0.1", port))?
     };
 
+    log::info!("About to start server");
     server.run().await?;
 
     Ok(())
