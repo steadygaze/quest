@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1 class="mb-1 text-2xl font-bold">Create a new quest</h1>
+  <p class="mb-2">Use this form to create a new quest.</p>
+  <form action="/qm/create_new_quest_submit" method="post">
+    <fieldset class="my-2 border-2 border-slate-500 p-2">
+      <legend class="text-xl font-bold">Basic info</legend>
+      <div class="pb-2">
+        <label for="title">Title: </label>
+        <input
+          type="title"
+          name="title"
+          id="title"
+          placeholder="Quest title"
+          class="border-2 border-slate-100"
+          required
+        />
+        <p>The full title of the quest.</p>
+      </div>
+      <div class="pb-2">
+        <label for="slug">Slug: </label>
+        <input
+          type="slug"
+          name="slug"
+          id="slug"
+          placeholder="URL slug"
+          class="border-2 border-slate-100"
+          required
+        />
+        <p>This is the portion that will appear in the URL.</p>
+      </div>
+    </fieldset>
+    <div class="border-t-2 py-2">
+      <input
+        class="bg-green-200 px-2 py-0.5 font-bold hover:bg-green-400"
+        type="submit"
+        value="Create quest"
+      />
+    </div>
+  </form>
+{% endblock content %}
