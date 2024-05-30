@@ -33,13 +33,12 @@ use crate::app_state::{AppConfig, AppState};
 use crate::error::{Error, Result};
 use crate::key;
 use crate::partials;
+use crate::session::SESSION_ID_COOKIE;
 
 const OAUTH_EXPIRATION_SEC: i64 = 60 * 10;
 const ACCOUNT_CREATION_TIMEOUT_SEC: i64 = 60 * 30;
 const SESSION_TTL_DAYS: i64 = 30; // 30 days
 const SESSION_TTL_SEC: i64 = SESSION_TTL_DAYS * 24 * 60 * 60; // 30 days
-
-const SESSION_ID_COOKIE: &str = "sid";
 
 /// Add oauth-related routes.
 pub fn add_routes<T>(app: actix_web::App<T>) -> actix_web::App<T>
@@ -176,7 +175,7 @@ pub async fn discord_callback(
             });
 
             if error == "access_denied" {
-                return Err(Error::AuthError("Access denied by Discord. Try again, but accept the prompt to grant permissions.".to_string()));
+                return Err(Error::AuthorizationError("Access denied by Discord. Try again, but accept the prompt to grant permissions.".to_string()));
             } else {
                 return Err(Error::InternalError(anyhow::anyhow!(
                     "Unknown error response from Discord API: error: {}, error_description: {}",
@@ -294,11 +293,11 @@ pub async fn discord_callback(
         None => (), // Success, but now we must create an account.
     }
 
-    let mut new_account_secret;
+    let mut new_account_secret = String::new();
     // Store an account secret to be passed back, indicating there is a pending
     // account creation. This is a loop because there is an extremely small
     // chance of accidentally generating a duplicate account secret.
-    loop {
+    for i in 0..100 {
         new_account_secret = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
         match app_state
             .redis_pool
@@ -319,6 +318,12 @@ pub async fn discord_callback(
                 break;
             } // Success.
         };
+        if i >= 99 {
+            // Failsafe in case there is a flaw in random number generation.
+            return Err(Error::AppError(
+                "Error generating account secret!".to_string(),
+            ));
+        }
     }
 
     Ok(CreateAccountTemplate {

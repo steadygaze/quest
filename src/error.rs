@@ -13,13 +13,17 @@ use actix_web::{
     HttpResponse,
 };
 use askama::Template;
+use awc::cookie::Cookie;
+
+use crate::session::SESSION_ID_COOKIE;
 
 /// Common errors that can be unwrapped in handlers.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     // We can't use #[error] because of special handling for InternalError.
     InternalError(#[from] anyhow::Error),
-    AuthError(String),
+    AuthenticationError(String),
+    AuthorizationError(String),
     AppError(String),
 }
 
@@ -40,7 +44,10 @@ impl Display for Error {
                         write!(f, "Internal error: {}", err)?;
                     }
                 }
-                Error::AuthError(err) => {
+                Error::AuthenticationError(err) => {
+                    write!(f, "{err}")?;
+                }
+                Error::AuthorizationError(err) => {
                     write!(f, "{err}")?;
                 }
                 Error::AppError(err) => {
@@ -80,7 +87,7 @@ impl error::ResponseError for Error {
             &Backtrace::disabled()
         };
         let status_code = self.status_code();
-        HttpResponse::build(status_code)
+        let mut response = HttpResponse::build(status_code)
             .content_type(ContentType::html())
             .body(
                 ErrorTemplate {
@@ -89,13 +96,26 @@ impl error::ResponseError for Error {
                     message: &self.to_string(),
                 }
                 .to_string(),
-            )
+            );
+
+        if let Error::AuthenticationError(_) = &self {
+            // Clear the corrupted session cookie, if any.
+            let mut session_cookie = Cookie::named(SESSION_ID_COOKIE);
+            session_cookie.set_path("/");
+            if let Err(err) = response.add_removal_cookie(&session_cookie) {
+                log::error!("Error adding session removal cookie: {err}");
+                // We are already in an error handler, so there is not much else
+                // we can do.
+            }
+        }
+        response
     }
 
     fn status_code(&self) -> StatusCode {
         match self {
             Error::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Error::AuthError(_) => StatusCode::UNAUTHORIZED,
+            Error::AuthenticationError(_) => StatusCode::BAD_REQUEST,
+            Error::AuthorizationError(_) => StatusCode::UNAUTHORIZED,
             Error::AppError(_) => StatusCode::BAD_REQUEST,
         }
     }
