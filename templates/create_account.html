@@ -118,7 +118,7 @@
                   'username-validation-target',
                 ).innerHTML =
                   '<span class=\'text-amber-600\'>Username too short</span>';
-              } else if (!/^[a-zA-Z0-9]$/.test(username)) {
+              } else if (/[^a-z0-9]/.test(username)) {
                 event.preventDefault(); {# Cancel AJAX. #}
                 document.getElementById(
                   'username-validation-target',

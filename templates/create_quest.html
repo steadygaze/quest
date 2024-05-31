@@ -2,7 +2,7 @@
 {% block content %}
   <h1 class="mb-1 text-2xl font-bold">Create a new quest</h1>
   <p class="mb-2">Use this form to create a new quest.</p>
-  <form action="/qm/create_new_quest_submit" method="post">
+  <form action="/qm/create_new_quest_submit" method="post" x-data="{title: '', slug: '', slugDirty: false}">
     <fieldset class="my-2 border-2 border-slate-500 p-2">
       <legend class="text-xl font-bold">Basic info</legend>
       <div class="pb-2">
@@ -14,6 +14,8 @@
           placeholder="Quest title"
           class="border-2 border-slate-100"
           required
+          x-model="title"
+          x-on:keyup="if (!slugDirty) {slug = title.toLowerCase().replaceAll(/[^a-z1-9]/g, '');}"
         />
         <p>The full title of the quest.</p>
       </div>
@@ -26,8 +28,37 @@
           placeholder="URL slug"
           class="border-2 border-slate-100"
           required
+          x-model="slug"
+          x-on:keyup="slugDirty = slug !== ''"
+          hx-get="/qm/check_existing_slug"
+          {# TODO - Fix bug where request is rerun even when slug not changed. #}
+          hx-trigger="keyup changed delay:1s from:#title, keyup changed delay:1s"
+          hx-target="#slug-validation-target"
+          hx-indicator="#slug-spinner"
+          {# Intercept HTMX event for client-side-only errors. #}
+          hx-on::before-request="
+              const slug = event.detail.requestConfig.parameters.slug;
+              if (slug.length < 3) {
+                event.preventDefault(); {# Cancel AJAX. #}
+                document.getElementById(
+                  'slug-validation-target',
+                ).innerHTML =
+                  '<span class=\'text-amber-600\'>Slug too short</span>';
+              } else if (/[^a-z0-9]/.test(slug)) {
+                event.preventDefault(); {# Cancel AJAX. #}
+                document.getElementById(
+                  'slug-validation-target',
+                ).innerHTML =
+                  '<span class=\'text-amber-600\'>Slug contains unallowed characters</span>';
+              }"
         />
-        <p>This is the portion that will appear in the URL.</p>
+        <span id="slug-validation-target"></span>
+        <img
+          id="slug-spinner"
+          class="htmx-indicator inline"
+          src="/spinner.svg"
+        />
+        <p>This is the portion that will appear in the URL. Only lowercase alphanumeric characters are allowed.</p>
       </div>
     </fieldset>
     <div class="border-t-2 py-2">

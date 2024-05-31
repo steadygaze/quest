@@ -5,6 +5,7 @@ use config::{builder::DefaultState, Config, ConfigBuilder, ConfigError};
 use fred::clients::RedisPool;
 use oauth2::basic::BasicClient;
 use serde::Deserialize;
+use uuid::Uuid;
 
 use crate::{
     error::{Error, Result},
@@ -26,7 +27,7 @@ impl AppState {
     pub async fn get_session(
         &self,
         request: HttpRequest,
-    ) -> Result<HashMap<String, String, RandomState>> {
+    ) -> Result<(HashMap<String, String, RandomState>, Uuid)> {
         let session_cookie = match request.cookie(session::SESSION_ID_COOKIE) {
             Some(session_cookie) => session_cookie,
             None => {
