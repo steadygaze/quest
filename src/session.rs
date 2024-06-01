@@ -14,8 +14,8 @@ use crate::key;
 
 pub const SESSION_ID_COOKIE: &str = "sid";
 
-/// Helper function for clearing the session record. This has to be done if we
-/// see that it's corrupted in some way.
+/// Helper function for clearing the server's session record. This has to be
+/// done if we notice it's corrupted in some way.
 fn background_clear_session(redis_pool: &RedisPool, session_id: &str) {
     let session_id = session_id.to_string();
     let redis_pool = redis_pool.clone();
@@ -26,6 +26,9 @@ fn background_clear_session(redis_pool: &RedisPool, session_id: &str) {
     });
 }
 
+/// Helper function to retrieve a user's session details, with some basic
+/// validation. Note that the AuthenticationError handler will clear the user's
+/// session cookie.
 pub async fn get_session_info(
     redis_pool: &RedisPool,
     alphanumeric: &Regex,

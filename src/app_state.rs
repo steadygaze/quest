@@ -19,11 +19,12 @@ pub struct AppState {
     pub db_pool: sqlx::postgres::PgPool,
     pub redis_pool: RedisPool,
     pub oauth_client: BasicClient,
-    pub regex: CompiledRegex,
+    pub regex: CompiledRegexes,
     pub uuid_seed: [u8; 6],
 }
 
 impl AppState {
+    /// Helper to get a user's session details.
     pub async fn get_session(
         &self,
         request: HttpRequest,
@@ -45,8 +46,9 @@ impl AppState {
     }
 }
 
+/// Struct for storing compiled regexes.
 #[derive(Clone)]
-pub struct CompiledRegex {
+pub struct CompiledRegexes {
     pub alphanumeric: regex::Regex,
     pub oauth_state_ok: regex::Regex,
 }

@@ -28,7 +28,7 @@ use sqlx::Row;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::app_state::CompiledRegex;
+use crate::app_state::CompiledRegexes;
 use crate::app_state::{AppConfig, AppState};
 use crate::error::{Error, Result};
 use crate::key;
@@ -283,8 +283,11 @@ pub async fn discord_callback(
                     .await
                     .context("Failed to record new session")?;
 
-            let mut response =
-                HttpResponse::Ok().body(format!("You are logged in as: {}", discord_email));
+            let mut response = partials::MessagePageTemplate {
+                config: &app_state.config,
+                message: format!("You are now logged in as {discord_email}.").as_str(),
+            }
+            .to_response();
             response
                 .add_cookie(&cookie)
                 .context("Error setting session cookie on request")?;
@@ -419,7 +422,7 @@ async fn create_session<'a>(
     return Ok(cookie_builder.finish());
 }
 
-fn valid_username(regex: &CompiledRegex, username: &str) -> bool {
+fn valid_username(regex: &CompiledRegexes, username: &str) -> bool {
     username.len() >= 3 && regex.alphanumeric.is_match(username)
 }
 

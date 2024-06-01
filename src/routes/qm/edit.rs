@@ -10,6 +10,7 @@ use anyhow::Context;
 use askama_actix::Template;
 use askama_actix::TemplateToResponse;
 use serde::Deserialize;
+use uuid::Uuid;
 
 use crate::app_state::AppConfig;
 use crate::app_state::AppState;
@@ -60,7 +61,8 @@ async fn check_existing_slug(
     request: HttpRequest,
 ) -> impl Responder {
     let (session_info, user_id) = match app_state.get_session(request).await {
-        Ok(session_info) => session_info,
+        Ok(tup) => tup,
+        // This is for injection via HTMX, so we can't show a full error page.
         _ => return partials::FailureTemplate { text: "error" }.to_response(),
     };
     let slug = &slug.slug;
@@ -93,7 +95,33 @@ async fn check_existing_slug(
     }
 }
 
+#[derive(Deserialize)]
+struct NewQuestForm {
+    title: String,
+    slug: String,
+}
+
 #[post("/qm/new")]
-async fn create_new_quest_submit() -> Result<impl Responder> {
-    Ok(HttpResponse::Ok().body(""))
+async fn create_new_quest_submit(
+    app_state: web::Data<AppState>,
+    form: web::Form<NewQuestForm>,
+    request: HttpRequest,
+) -> Result<impl Responder> {
+    let (session_info, user_id) = app_state.get_session(request).await?;
+    // TODO - Must be QM to view this page.
+
+    sqlx::query_as(
+        r#"
+        insert into quest (id, questmaster, title, slug)
+        values ($1, $2, $3, $4)
+        "#,
+    )
+    .bind(Uuid::now_v6(&app_state.uuid_seed))
+    .bind(user_id)
+    .bind(&form.title)
+    .bind(&form.slug)
+    .fetch_one(&app_state.db_pool)
+    .await
+    .context("Failed to insert new quest")?;
+    Ok(HttpResponse::Ok().body("ok"))
 }

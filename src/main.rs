@@ -3,7 +3,7 @@
 #![allow(unused_variables)]
 // Temporarily disable some warnings for development.
 
-use crate::app_state::{AppConfig, AppState, CompiledRegex};
+use crate::app_state::{AppConfig, AppState, CompiledRegexes};
 
 use actix_web::HttpRequest;
 use actix_web::{get, http, middleware, web, App, HttpResponse, HttpServer, Responder};
@@ -87,7 +87,7 @@ async fn main() -> Result<(), sqlx::Error> {
 
     let oauth_client = oauth::oauth_client(&config);
 
-    let regex = CompiledRegex {
+    let regex = CompiledRegexes {
         alphanumeric: Regex::new(r"^[0-9A-Za-z]+$").expect("failed to compile regex"),
         oauth_state_ok: Regex::new(r"^[0-9A-Za-z+/_-]+=*$").expect("failed to compile regex"),
     };
