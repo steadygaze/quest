@@ -434,8 +434,9 @@ pub async fn create_account(
             || form
                 .username
                 .as_ref()
-                .is_some_and(|x| valid_username(&app_state.regex, x)))
+                .is_some_and(|x| !valid_username(&app_state.regex, x)))
     {
+        trace!("Rejecting bad username: {:?}", form.username);
         return Err(Error::AppError("Bad username".to_string()));
     }
 

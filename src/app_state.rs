@@ -12,7 +12,7 @@ use crate::{
     session,
 };
 
-/// Actix state object for dependency injection.
+/// Actix state object that all route handlers will have access to.
 #[derive(Clone)]
 pub struct AppState {
     pub config: AppConfig,

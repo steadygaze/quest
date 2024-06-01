@@ -17,7 +17,7 @@ pub fn oauth_client(config: &AppConfig) -> BasicClient {
     // Set the URL the user will be redirected to after the authorization process.
     .set_redirect_uri(
         RedirectUrl::new(
-            format!("http://127.0.0.1:{}/auth/discord/callback", config.port).to_string(),
+            format!("http://localhost:{}/auth/discord/callback", config.port).to_string(),
         )
         .unwrap(),
     )
