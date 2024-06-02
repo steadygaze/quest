@@ -106,12 +106,12 @@ async fn main() -> Result<(), sqlx::Error> {
     let server = HttpServer::new(move || {
         let generated = generate();
         let app = App::new()
-            .wrap(middleware::Compress::default())
-            .wrap(middleware::Logger::default())
-            .wrap(
-                middleware::ErrorHandlers::new()
-                    .handler(http::StatusCode::NOT_FOUND, error::custom_404),
-            )
+            // .wrap(middleware::Compress::default())
+            // .wrap(middleware::Logger::default())
+            // .wrap(
+            //     middleware::ErrorHandlers::new()
+            //         .handler(http::StatusCode::NOT_FOUND, error::custom_404),
+            // )
             .app_data(web::Data::new(app_state.clone()))
             .service(
                 ResourceFiles::new("/", generated)

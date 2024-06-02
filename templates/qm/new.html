@@ -15,7 +15,7 @@
           class="border-2 border-slate-100"
           required
           x-model="title"
-          x-on:keyup="if (!slugDirty) {slug = title.toLowerCase().replaceAll(/[^a-z1-9]/g, '');}"
+          x-on:keyup="if (!slugDirty) {slug = usernameify(title);}"
         />
         <p>The full title of the quest.</p>
       </div>
@@ -29,7 +29,7 @@
           class="border-2 border-slate-100"
           required
           x-model="slug"
-          x-on:keyup="slugDirty = slug !== '' && slug !== title.toLowerCase().replaceAll(/[^a-z1-9]/g, '')"
+          x-on:keyup="slugDirty = slug !== '' && slug !== usernameify(title)"
           hx-get="/qm/check_existing_slug"
           hx-trigger="keyup changed delay:1s from:#title, keyup changed delay:1s"
           hx-target="#slug-validation-target"
@@ -55,6 +55,12 @@
                   'slug-validation-target',
                 ).innerHTML =
                   '<span class=\'text-amber-600\'>Slug contains unallowed characters</span>';
+              } else if (/^[^a-z]/.test(username)) {
+                event.preventDefault();
+                document.getElementById(
+                  'slug-validation-target',
+                ).innerHTML =
+                  '<span class=\'text-amber-600\'>Slug must start with a letter (not a number)</span>';
               }"
         />
         <span id="slug-validation-target"></span>
@@ -63,7 +69,7 @@
           class="htmx-indicator inline"
           src="/spinner.svg"
         />
-        <p>This is the portion that will appear in the URL. Only lowercase alphanumeric characters are allowed.</p>
+        <p>This is a (potentially abbreviated) title of the quest that will appear in URLs. Only lowercase alphanumeric characters are allowed.</p>
       </div>
     </fieldset>
     <div class="border-t-2 py-2">

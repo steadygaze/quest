@@ -1,16 +1,16 @@
-pub mod oauth;
+pub mod auth;
 pub mod qm;
 pub mod quest;
 
 use actix_web::dev::ServiceFactory;
 use actix_web::dev::ServiceRequest;
+use actix_web::web;
 
 pub fn add_routes<T>(app: actix_web::App<T>) -> actix_web::App<T>
 where
     T: ServiceFactory<ServiceRequest, Config = (), Error = actix_web::Error, InitError = ()>,
 {
-    let app = oauth::add_routes(app);
-    let app = qm::add_routes(app);
-    let app = quest::add_routes(app);
-    app
+    app.service(auth::add_routes(web::scope("/auth")))
+        .service(qm::add_routes(web::scope("/qm")))
+        .service(quest::add_routes(web::scope("/quest")))
 }

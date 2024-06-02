@@ -1,22 +1,14 @@
--- TODO - Decide whether to use hyphen or underscore in usernames and URLs.
--- We would use citext but support for it is lacking.
+-- TODO - Consider using citext again.
+-- We include triggers for checking the allowed lengths of some fields, but
+-- this would be incompatible with allowing per-instance configurable lengths.
 
 create domain email as text
   check ( value ~ '^[a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$' );
 
-create table active_session (
-  session_token text primary key,
-  email email unique not null,
-  created_at timestamptz not null default current_timestamp
-);
-
-create domain username as text
-  check ( value ~ '^[a-zA-Z0-9-]+$' );
+-- Should permissions be per-account or per-profile?
 
 create table account (
-  id uuid primary key default gen_random_uuid(), -- default gen_random_uuid()
-  /* id uuid primary key not null, -- No default because it's a UUIDv6. */
-  -- TODO - There is an ActivityPub name for this.
+  id uuid primary key default gen_random_uuid(),
   email email unique not null,
   secondary_email email[],
   created_at timestamptz not null default current_timestamp
@@ -28,66 +20,79 @@ comment on column account.email is 'Primary email.';
 comment on column account.secondary_email is 'Secondary emails.';
 comment on column account.created_at is 'Created at timestamp.';
 
+create domain username as text
+  check ( value ~ '^[a-z0-9]+$' and substring(value, 1, 1) ~ '[a-z]' );
+
 create table profile (
-  id uuid primary key references account,
-  username username unique not null constraint username_not_too_long check (length(username) < 30),
-  -- display_name text constraint display_name_not_too_long check (length(display_name) < 30),
-  -- TODO - There is an ActivityPub name for this.
-  bio text constraint bio_not_too_long check (length(bio) < 5000)
+  id uuid primary key default gen_random_uuid(),
+  username username unique not null constraint username_not_too_long check (length(username) < 30 and length(username) >= 3),
+  account_id uuid references account,
+  display_name text constraint display_name_not_too_long check (length(display_name) < 30),
+  bio text constraint bio_not_too_long check (length(bio) < 500)
 );
 
 comment on table profile is 'User profile, for non-lurker users.';
-comment on column profile.id is 'Profile ID.';
+comment on column profile.id is 'Profile ID. Unchanging in case the username is changed. Private/transparent to users.';
 comment on column profile.username is 'Username.';
-comment on column profile.bio is 'User bio';
+comment on column profile.account_id is 'Account association.';
+comment on column profile.display_name is 'Display name; shown in UI.';
+comment on column profile.bio is 'User bio.';
 
--- Whether a quest is active or not.
-create type quest_state as enum (
+-- Whether a quest is active or not. Does not impact visibility, posting permissions, etc. Is used as a signal to readers in the UI.
+create type quest_publish_state as enum (
   -- Quest is still a draft/idea.
-  'preparing',
+  'prepping',
   -- Quest is active.
   'active',
   -- Quest is on hiatus.
   'hiatus',
-  -- Quest is archived.
-  'archived'
+  -- Quest is cancelled.
+  'cancelled'
+  -- Quest is complete.
+  'complete'
 );
 
-create domain url_part as text
-  check ( value ~ '^[a-zA-Z0-9-]+$' );
-
-create type quest_visibility as enum (
-  -- Quest is visible only to QM.
-  'private',
-  -- Quest is visible to those who have the link, but not on feeds.
-  'unlisted',
-  -- Quest is public.
-  'public'
-);
+create domain url_part as text check ( value ~ '^[a-z0-9]+$' );
 
 -- A quest.
 create table quest (
   id uuid primary key,
-  questmaster uuid references account not null,
-  created_at timestamptz not null,
-  visibility quest_visibility default 'private'::quest_visibility not null,
-  state quest_state default 'preparing'::quest_state not null,
   title text not null,
   slug url_part unique not null,
-  description text,
-  last_updated timestamptz not null default current_timestamp
+  short_description text check (length(short_description) <= 250),
+  long_description text check (length(long_description) <= 5000),
+  questmaster uuid references account not null,
+  publish_state quest_publish_state default 'prepping'::quest_publish_state not null,
+  created_at timestamptz not null default current_timestamp,
+  general_access boolean not null default true,
+  general_commenting boolean not null default true,
+  listed_in_feeds boolean not null default true,
+  require_log_in_to_view boolean not null default false
+  /* last_updated timestamptz not null default current_timestamp */
 );
 
 comment on table quest is 'A quest';
 comment on column quest.id is 'Quest ID';
-comment on column quest.questmaster is 'Who the questmaster, the author of the quest, is.';
-comment on column quest.created_at is 'When the quest was created';
-comment on column quest.visibility is 'The visibility of the quest (private, unlisted, public).';
-comment on column quest.state is 'What state the quest is in.';
 comment on column quest.title is 'Title of the quest, shown in the UI.';
 comment on column quest.slug is 'Short name used in the URL.';
-comment on column quest.description is 'Description of the quest.';
-comment on column quest.last_updated is 'When the QM last updated the quest.';
+comment on column quest.short_description is 'Short description shown in feeds.';
+comment on column quest.long_description is 'Long description shown on the quest page.';
+comment on column quest.questmaster is 'Who the questmaster, the author of the quest, is.';
+comment on column quest.publish_state is 'Whether the quest is active or not, according to the author.';
+comment on column quest.created_at is 'When the quest was created';
+comment on column quest.general_access is 'Whether the quest is viewable without explicitly being on an allowlist.';
+comment on column quest.general_commenting is 'Whether the quest allows comments without commenters being on an allowlist.';
+comment on column quest.listed_in_feeds is 'Whether the quest is listed in feeds, for users who can view it.';
+comment on column quest.require_log_in_to_view is 'Whether the quest requires the user to be logged in, independent of general_access.';
+/* comment on column quest.last_updated is 'When the QM last updated the quest.'; */
+
+-- Allowlisted users for a given quest.
+create table quest_allowed_user (
+  quest_id uuid references quest not null,
+  profile_id uuid references profile not null
+);
+
+-- EVERYTHING BELOW IS VERY NOT FINAL:
 
 -- Whether a quest post is still accepting comments.
 create type quest_post_state as enum (
@@ -100,6 +105,9 @@ create type quest_post_state as enum (
   -- Post is not accepting new commands or player feedback. Non-command comments are still accepted.
   'finalized'
 );
+
+/* create table quest_moderator ( */
+/* ); */
 
 -- A post by the questmaster of a quest.
 -- Assumption: one questmaster.

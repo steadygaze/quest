@@ -36,16 +36,14 @@ use crate::partials;
 use crate::session::SESSION_ID_COOKIE;
 
 const OAUTH_EXPIRATION_SEC: i64 = 60 * 10;
-const ACCOUNT_CREATION_TIMEOUT_SEC: i64 = 60 * 30;
+const ACCOUNT_CREATION_TIMEOUT_SEC: i64 = 60 * 60;
 const SESSION_TTL_DAYS: i64 = 30; // 30 days
 const SESSION_TTL_SEC: i64 = SESSION_TTL_DAYS * 24 * 60 * 60; // 30 days
 
-/// Add oauth-related routes.
-pub fn add_routes<T>(app: actix_web::App<T>) -> actix_web::App<T>
-where
-    T: ServiceFactory<ServiceRequest, Config = (), Error = actix_web::Error, InitError = ()>,
-{
-    app.service(discord_start)
+/// Add auth-related routes.
+pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
+    scope
+        .service(discord_start)
         .service(discord_callback)
         .service(create_account)
         .service(test)
@@ -54,7 +52,8 @@ where
         .service(logout)
 }
 
-#[get("/auth/test")]
+/// Temporary endpoint for testing the auth page template.
+#[get("/test")]
 pub async fn test(app_state: web::Data<AppState>) -> impl Responder {
     CreateAccountTemplate {
         config: &app_state.config,
@@ -65,7 +64,7 @@ pub async fn test(app_state: web::Data<AppState>) -> impl Responder {
 }
 
 /// Start Discord oauth by generating a PKCE challenge and redirecting.
-#[get("/auth/discord/start")]
+#[get("/discord/start")]
 pub async fn discord_start(app_state: web::Data<AppState>) -> Result<impl Responder> {
     // Generate a PKCE challenge.
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
@@ -118,14 +117,14 @@ struct DiscordUser {
 }
 
 #[derive(Template)]
-#[template(path = "create_account.html")]
+#[template(path = "auth/create_account.html")]
 struct CreateAccountTemplate<'a> {
     config: &'a AppConfig,
     email: &'a str,
     secret: &'a str,
 }
 
-#[get("/auth/discord/callback")]
+#[get("/discord/callback")]
 pub async fn discord_callback(
     app_state: web::Data<AppState>,
     params: web::Query<DiscordOauthRedirectParams>,
@@ -272,19 +271,19 @@ pub async fn discord_callback(
     .await
     .context("Failed to check if user's account exists")?
     {
-        Some((user_id,)) => {
+        Some((account_id,)) => {
             let previous_session = request.cookie(SESSION_ID_COOKIE);
             if previous_session.is_some() {
                 trace!("Clearing a previous session on new login");
             }
             // Regular login for existing user.
-            let cookie =
-                create_session(&app_state.redis_pool, user_id.to_string(), previous_session)
-                    .await
-                    .context("Failed to record new session")?;
+            let cookie = create_session(&app_state.redis_pool, account_id, previous_session)
+                .await
+                .context("Failed to record new session")?;
 
             let mut response = partials::MessagePageTemplate {
                 config: &app_state.config,
+                page_title: &Some("Logged in"),
                 message: format!("You are now logged in as {discord_email}.").as_str(),
             }
             .to_response();
@@ -345,6 +344,8 @@ struct RegisterUserFormData {
     #[serde(rename = "create-profile")]
     create_profile: Option<String>, // "on" or "off"
     username: Option<String>,
+    #[serde(rename = "display-name")]
+    display_name: Option<String>, // "on" or "off"
     bio: Option<String>,
 }
 
@@ -353,7 +354,7 @@ struct UsernameExistsQuery {
     username: String,
 }
 
-#[get("/user/exists_already")]
+#[get("/profile_exists_already")]
 pub async fn check_if_user_already_exists(
     app_state: web::Data<AppState>,
     params: web::Query<UsernameExistsQuery>,
@@ -387,7 +388,7 @@ pub async fn check_if_user_already_exists(
 
 async fn create_session<'a>(
     redis_pool: &'a RedisPool,
-    user_id: String,
+    account_id: Uuid,
     previous_session: Option<Cookie<'_>>,
 ) -> std::result::Result<Cookie<'a>, RedisError> {
     let session_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
@@ -399,7 +400,7 @@ async fn create_session<'a>(
     let _ = transaction
         .hset::<i64, _, _>(
             key::session(&session_id),
-            HashMap::from([("user_id", user_id)]),
+            HashMap::from([("account_id", account_id.simple().to_string())]),
         )
         .await;
     let _ = transaction
@@ -422,11 +423,16 @@ async fn create_session<'a>(
     return Ok(cookie_builder.finish());
 }
 
+/// First character is a letter, username is between 3 and 30 characters long,
+/// and is alphanumeric.
 fn valid_username(regex: &CompiledRegexes, username: &str) -> bool {
-    username.len() >= 3 && regex.alphanumeric.is_match(username)
+    username.chars().next().is_some_and(|x| x.is_lowercase())
+        && username.len() >= 3
+        && username.len() < 30
+        && regex.alphanumeric.is_match(username)
 }
 
-#[post("/auth/create_account")]
+#[post("/create_account")]
 pub async fn create_account(
     app_state: web::Data<AppState>,
     form: web::Form<RegisterUserFormData>,
@@ -484,12 +490,13 @@ pub async fn create_account(
             .execute(
                 sqlx::query(
                     r#"
-                    insert into profile (id, username, bio)
-                    values ($1, $2, $3)
+                    insert into profile (username, account_id, display_name, bio)
+                    values ($1, $2, $3, $4)
                     "#,
                 )
-                .bind(id)
                 .bind(&form.username)
+                .bind(id)
+                .bind(&form.display_name)
                 .bind(&form.bio),
             )
             .await
@@ -501,15 +508,12 @@ pub async fn create_account(
         .await
         .context("Failed to commit account creation")?;
 
-    let cookie = create_session(
-        &app_state.redis_pool,
-        id.to_string(),
-        request.cookie(SESSION_ID_COOKIE),
-    )
-    .await
-    .context("Failed to create new session after account creation")?;
+    let cookie = create_session(&app_state.redis_pool, id, request.cookie(SESSION_ID_COOKIE))
+        .await
+        .context("Failed to create new session after account creation")?;
     let mut response = partials::MessagePageTemplate {
         config: &app_state.config,
+        page_title: &Some("Logged in"),
         message: "Account created successfully. You are now logged in.",
     }
     .to_response();
@@ -519,7 +523,7 @@ pub async fn create_account(
     Ok(response)
 }
 
-#[post("/auth/cancel_create_account")]
+#[post("/cancel_create_account")]
 pub async fn cancel_create_account(
     app_state: web::Data<AppState>,
     form: web::Form<RegisterUserFormData>,
@@ -533,12 +537,13 @@ pub async fn cancel_create_account(
 
     Ok(partials::MessagePageTemplate {
         config: &app_state.config,
+        page_title: &Some("Cancelled"),
         message: "Account creation cancelled; your information has been forgotten. If you want to create a new account, start over.",
     }
     .to_response())
 }
 
-#[get("/auth/logout")]
+#[get("/logout")]
 pub async fn logout(
     app_state: web::Data<AppState>,
     request: HttpRequest,
@@ -553,6 +558,7 @@ pub async fn logout(
 
         let mut response = partials::MessagePageTemplate {
             config: &app_state.config,
+            page_title: &Some("Logged out"),
             message: "You are now logged out. Goodbye.",
         }
         .to_response();
@@ -567,6 +573,7 @@ pub async fn logout(
     } else {
         Ok(partials::MessagePageTemplate {
             config: &app_state.config,
+            page_title: &Some("Logged out"),
             message: "You were already logged out.",
         }
         .to_response())

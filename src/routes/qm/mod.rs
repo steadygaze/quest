@@ -1,11 +1,8 @@
-pub mod edit;
+mod new;
 
 use actix_web::dev::ServiceFactory;
 use actix_web::dev::ServiceRequest;
 
-pub fn add_routes<T>(app: actix_web::App<T>) -> actix_web::App<T>
-where
-    T: ServiceFactory<ServiceRequest, Config = (), Error = actix_web::Error, InitError = ()>,
-{
-    edit::add_routes(app)
+pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
+    new::add_routes(scope)
 }

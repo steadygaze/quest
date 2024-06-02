@@ -43,12 +43,12 @@ pub async fn get_session_info(
         .hgetall::<HashMap<String, String, _>, _>(key::session(session_id))
         .await
         .context("Failed to retrieve session info")?;
-    match session_info.get("user_id") {
+    match session_info.get("account_id") {
         Some(uuid) => {
             let uuid = match Uuid::try_parse(uuid) {
                 Ok(uuid) => uuid,
                 Err(err) => {
-                    log::error!("Unparseable user_id: {}", uuid);
+                    log::error!("Unparseable account_id: {}", uuid);
                     background_clear_session(redis_pool, session_id);
                     return Err(Error::AuthenticationError(
                         "Your session was corrupted. Try logging in again.".to_string(),
@@ -59,7 +59,7 @@ pub async fn get_session_info(
         }
         None => {
             if !session_info.is_empty() {
-                // A session hash with no user_id is invalid. Delete it.
+                // A session hash with no account_id is invalid. Delete it.
                 background_clear_session(redis_pool, session_id);
             }
             Err(Error::AuthenticationError(

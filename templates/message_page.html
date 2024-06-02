@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
+  {% if let Some(page_title) = page_title %}
+    <h1 class="mb-1 text-2xl font-bold">{{ page_title }}</h1>
+  {% endif %}
   <p class="m-1">{{ message }}</p>
   <p class="m-1 font-bold underline decoration-dashed hover:decoration-solid">
     <a href="/">Go home</a>

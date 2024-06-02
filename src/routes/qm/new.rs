@@ -20,30 +20,28 @@ use crate::partials;
 use crate::session::get_session_info;
 use crate::session::SESSION_ID_COOKIE;
 
-pub fn add_routes<T>(app: actix_web::App<T>) -> actix_web::App<T>
-where
-    T: ServiceFactory<ServiceRequest, Config = (), Error = actix_web::Error, InitError = ()>,
-{
-    app.service(create_new_quest_form)
+pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
+    scope
+        .service(create_new_quest_form)
         .service(create_new_quest_submit)
         .service(check_existing_slug)
 }
 
 #[derive(Template)]
-#[template(path = "create_quest.html")]
-struct CreateQuestTemplate<'a> {
+#[template(path = "qm/new.html")]
+struct NewQuestTemplate<'a> {
     config: &'a AppConfig,
 }
 
-#[get("/qm/new")]
+#[get("/new")]
 async fn create_new_quest_form(
     app_state: web::Data<AppState>,
     request: HttpRequest,
 ) -> Result<impl Responder> {
-    let (session_info, user_id) = app_state.get_session(request).await?;
+    let (session_info, account_id) = app_state.get_session(request).await?;
     // TODO - Must be QM to view this page.
 
-    Ok(CreateQuestTemplate {
+    Ok(NewQuestTemplate {
         config: &app_state.config,
     }
     .to_response())
@@ -54,13 +52,13 @@ struct Slug {
     slug: String,
 }
 
-#[get("/qm/check_existing_slug")]
+#[get("/check_existing_slug")]
 async fn check_existing_slug(
     app_state: web::Data<AppState>,
     slug: web::Query<Slug>,
     request: HttpRequest,
 ) -> impl Responder {
-    let (session_info, user_id) = match app_state.get_session(request).await {
+    let (session_info, account_id) = match app_state.get_session(request).await {
         Ok(tup) => tup,
         // This is for injection via HTMX, so we can't show a full error page.
         _ => return partials::FailureTemplate { text: "error" }.to_response(),
@@ -79,7 +77,7 @@ async fn check_existing_slug(
         "#,
     )
     .bind(&slug)
-    .bind(&user_id)
+    .bind(&account_id)
     .fetch_one(&app_state.db_pool)
     .await
     {
@@ -101,13 +99,13 @@ struct NewQuestForm {
     slug: String,
 }
 
-#[post("/qm/new")]
+#[post("/new")]
 async fn create_new_quest_submit(
     app_state: web::Data<AppState>,
     form: web::Form<NewQuestForm>,
     request: HttpRequest,
 ) -> Result<impl Responder> {
-    let (session_info, user_id) = app_state.get_session(request).await?;
+    let (session_info, account_id) = app_state.get_session(request).await?;
     // TODO - Must be QM to view this page.
 
     sqlx::query_as(
@@ -117,7 +115,7 @@ async fn create_new_quest_submit(
         "#,
     )
     .bind(Uuid::now_v6(&app_state.uuid_seed))
-    .bind(user_id)
+    .bind(account_id)
     .bind(&form.title)
     .bind(&form.slug)
     .fetch_one(&app_state.db_pool)

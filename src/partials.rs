@@ -19,5 +19,6 @@ pub struct FailureTemplate<'a> {
 #[template(path = "message_page.html")]
 pub struct MessagePageTemplate<'a> {
     pub config: &'a AppConfig,
+    pub page_title: &'a Option<&'a str>,
     pub message: &'a str,
 }

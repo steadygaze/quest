@@ -81,7 +81,11 @@
         </p>
       </div>
     </fieldset>
-    <fieldset class="my-2 border-2 border-slate-500 p-2" x-bind:class="{'border-slate-500': createProfile, 'border-slate-200': !createProfile}">
+    <fieldset
+      class="my-2 border-2 border-slate-500 p-2"
+      x-data="{displayName: '', username: '', usernameDirty: false}"
+      x-bind:class="{'border-slate-500': createProfile, 'border-slate-200': !createProfile}"
+    >
       <legend class="text-xl font-bold">Profile</legend>
       <div class="pb-2">
         <label for="create-profile">Create profile: </label>
@@ -98,20 +102,46 @@
         </p>
       </div>
       <div class="border-t-2 py-2">
+        <label for="display-name">Display name: </label>
+        <input
+          type="text"
+          name="display-name"
+          id="display-name"
+          placeholder="Display name"
+          x-model="displayName"
+          x-bind:disabled="!createProfile"
+          x-on:keyup="if (!usernameDirty) {username = usernameify(displayName);}"
+          class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
+        />
+        <p>
+          This text is displayed alongside your username for others to easily
+          identify you.
+        </p>
+      </div>
+      {# TODO - Autofill username. #}
+      <div class="border-t-2 py-2">
         <label for="username">Username: </label>
         <input
           type="text"
           name="username"
           id="username"
           placeholder="Username"
+          x-model="username"
           x-bind:disabled="!createProfile"
-          hx-get="/user/exists_already"
-          hx-trigger="keyup changed delay:1s"
+          x-on:keyup="usernameDirty = username !== '' && username !== usernameify(displayName)"
+          hx-get="/auth/profile_exists_already"
+          hx-trigger="keyup changed delay:1s from:#display-name, keyup changed delay:1s"
           hx-target="#username-validation-target"
           hx-indicator="#username-spinner"
           {# Intercept HTMX event for client-side-only errors. #}
           hx-on::before-request="
               const username = event.detail.requestConfig.parameters.username;
+              if (globalThis.username && globalThis.username === username) {
+                {# Prevent double-triggering in some circumstances. #}
+                event.preventDefault(); {# Cancel AJAX. #}
+                return;
+              }
+              globalThis.username = username;
               if (username.length < 3) {
                 event.preventDefault(); {# Cancel AJAX. #}
                 document.getElementById(
@@ -124,6 +154,12 @@
                   'username-validation-target',
                 ).innerHTML =
                   '<span class=\'text-amber-600\'>Username contains unallowed characters</span>';
+              } else if (/^[^a-z]/.test(username)) {
+                event.preventDefault();
+                document.getElementById(
+                  'username-validation-target',
+                ).innerHTML =
+                  '<span class=\'text-amber-600\'>Username must start with a letter (not a number)</span>';
               }"
           class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
         />
@@ -134,8 +170,10 @@
           src="/spinner.svg"
         />
         <p>
-          A username may contain only letters or numbers, and must be at least
-          three characters long.
+          A username is also used to identify you, but may be abbreviated
+          compared to the display name. It may be used by others to refer to
+          you. It may contain only letters or numbers, must be at least three
+          characters long, and must start with a letter.
         </p>
       </div>
       <div x-data="{bioText: ''}" class="border-t-2 py-2">
@@ -167,6 +205,7 @@
         type="submit"
         formaction="/auth/cancel_create_account"
         value="Cancel"
+        formnovalidate
         {# Can cancel without checking TOS checkbox. #}
       />
     </div>
