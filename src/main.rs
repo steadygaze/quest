@@ -44,15 +44,6 @@ pub async fn index(app_state: web::Data<AppState>, request: HttpRequest) -> impl
     .to_response()
 }
 
-#[get("/css/tailwind.css")]
-pub async fn get_tailwind() -> impl Responder {
-    HttpResponse::Ok()
-        .content_type(http::header::ContentType(mime::TEXT_CSS))
-        // Can't figure out how to use std::path::MAIN_SEPARATOR with concat!,
-        // so this might not work on Windows.
-        .body(include_str!(concat!(env!("OUT_DIR"), "/tailwind.css")))
-}
-
 #[actix_web::main]
 async fn main() -> Result<(), sqlx::Error> {
     dotenvy::dotenv().ok();
@@ -106,12 +97,12 @@ async fn main() -> Result<(), sqlx::Error> {
     let server = HttpServer::new(move || {
         let generated = generate();
         let app = App::new()
-            // .wrap(middleware::Compress::default())
-            // .wrap(middleware::Logger::default())
-            // .wrap(
-            //     middleware::ErrorHandlers::new()
-            //         .handler(http::StatusCode::NOT_FOUND, error::custom_404),
-            // )
+            .wrap(middleware::Compress::default())
+            .wrap(middleware::Logger::default())
+            .wrap(
+                middleware::ErrorHandlers::new()
+                    .handler(http::StatusCode::NOT_FOUND, error::custom_404),
+            )
             .app_data(web::Data::new(app_state.clone()))
             .service(
                 ResourceFiles::new("/", generated)
@@ -121,7 +112,6 @@ async fn main() -> Result<(), sqlx::Error> {
                     // handlers are skipped.
                     .skip_handler_when_not_found(),
             )
-            .service(get_tailwind)
             .service(index);
         let app = routes::add_routes(app);
         app
@@ -132,8 +122,6 @@ async fn main() -> Result<(), sqlx::Error> {
     } else {
         server.bind(("localhost", port))?
     };
-
-    log::info!("About to start server");
     server.run().await?;
 
     Ok(())
