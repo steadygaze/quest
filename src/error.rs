@@ -75,7 +75,8 @@ mod filters {
 pub struct ErrorTemplate<'a> {
     pub backtrace: &'a Backtrace,
     pub status: &'a StatusCode,
-    pub message: &'a String,
+    pub message: &'a Option<String>,
+    pub preformatted_message: &'a Option<String>,
 }
 
 impl error::ResponseError for Error {
@@ -89,14 +90,23 @@ impl error::ResponseError for Error {
         let status_code = self.status_code();
         let mut response = HttpResponse::build(status_code)
             .content_type(ContentType::html())
-            .body(
+            .body(if let Error::InternalError(_) = &self {
                 ErrorTemplate {
                     backtrace,
                     status: &status_code,
-                    message: &self.to_string(),
+                    message: &None,
+                    preformatted_message: &Some(self.to_string()),
                 }
-                .to_string(),
-            );
+                .to_string()
+            } else {
+                ErrorTemplate {
+                    backtrace,
+                    status: &status_code,
+                    message: &Some(self.to_string()),
+                    preformatted_message: &None,
+                }
+                .to_string()
+            });
 
         if let Error::AuthenticationError(_) = &self {
             // Clear the corrupted session cookie, if any.
@@ -131,7 +141,8 @@ pub fn custom_404<B>(
         ErrorTemplate {
             backtrace: &Backtrace::disabled(),
             status: &StatusCode::NOT_FOUND,
-            message: &format!("The page \"{}\" doesn't exist.", req.path()),
+            message: &Some(format!("The page \"{}\" doesn't exist.", req.path())),
+            preformatted_message: &None,
         }
         .to_string(),
     );

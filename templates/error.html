@@ -11,17 +11,22 @@
   <body class="bg-slate-300">
     <div class="container mx-auto mt-2">
       <div
-        class="mx-2 mx-auto w-full max-w-prose border-4 border-slate-500 bg-slate-50 p-2 [border-style:ridge]"
+        class="mx-2 mx-auto border-4 border-slate-500 bg-slate-50 p-2 [border-style:ridge]"
       >
         <h1 class="mb-1 text-2xl">
           {{ status.as_str() }} {{ status.canonical_reason()|nonetoempty }}
         </h1>
-        <p class="m-1 text-amber-600">{{ message }}</p>
+        {% if let Some(message) = message %}
+          <p class="m-1 text-amber-600">{{ message }}</p>
+        {% endif %}
+        {% if let Some(preformatted_message) = preformatted_message %}
+          <pre>{{ preformatted_message }}</pre>
+        {% endif %}
         {% match backtrace.status() %}
           {% when BacktraceStatus::Captured %}
-          <pre><code>
+          <pre>
 {{ backtrace }}
-          </code></pre>
+          </pre>
         {% else %}
 
         {% endmatch %}
@@ -33,16 +38,23 @@
           <li>
             <a
               class="m-1 font-bold underline decoration-dashed hover:decoration-solid"
-              href="/"
-              >Go home</a
-            >
+              href="javascript:window.location.reload()"
+              >Refresh the page</a
+            >&mdash; be careful as this will resend any forms that were submitted.
           </li>
           <li>
             <a
               class="m-1 font-bold underline decoration-dashed hover:decoration-solid"
               href="javascript:history.back()"
               >Go back to the previous page</a
-            >&mdash; this may not always work as expected.
+            >&mdash; this may not work as expected if you were redirected.
+          </li>
+          <li>
+            <a
+              class="m-1 font-bold underline decoration-dashed hover:decoration-solid"
+              href="/"
+              >Go home</a
+            >
           </li>
         </ul>
       </div>
