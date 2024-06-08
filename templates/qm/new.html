@@ -2,7 +2,7 @@
 {% block content %}
   <h1 class="mb-1 text-2xl font-bold">Create a new quest</h1>
   <p class="mb-2">Use this form to create a new quest.</p>
-  <form action="/qm/new" method="post" x-data="{title: '', slug: '', slugDirty: false}">
+  <form id="new-quest-form" action="/qm/new" method="post" x-data="{title: '', slug: '', slugDirty: false}">
     <fieldset class="my-2 border-2 border-slate-500 p-2">
       <legend class="text-xl font-bold">Basic info</legend>
       <div class="pb-2">
@@ -14,10 +14,12 @@
           placeholder="Quest title"
           class="border-2 border-slate-100"
           required
+          minlength="3"
+          maxlength="250"
           x-model="title"
           x-on:keyup="if (!slugDirty) {slug = usernameify(title);}"
         />
-        <p>The full title of the quest.</p>
+        <p>The full title of the quest. Must be at least 3 characters and at most 250 characters long.</p>
       </div>
       <div class="pb-2">
         <label for="slug">Slug: </label>
@@ -28,6 +30,9 @@
           placeholder="URL slug"
           class="border-2 border-slate-100"
           required
+          minlength="3"
+          maxlength="30"
+          pattern="[a-z][a-z0-9]*"
           x-model="slug"
           x-on:keyup="slugDirty = slug !== '' && slug !== usernameify(title)"
           hx-get="/qm/check_existing_slug"
@@ -54,8 +59,8 @@
                 document.getElementById(
                   'slug-validation-target',
                 ).innerHTML =
-                  '<span class=\'text-amber-600\'>Slug contains unallowed characters</span>';
-              } else if (/^[^a-z]/.test(username)) {
+                  '<span class=\'text-amber-600\'>Slug may contain lowercase letters and numbers only</span>';
+              } else if (/^[^a-z]/.test(slug)) {
                 event.preventDefault();
                 document.getElementById(
                   'slug-validation-target',
@@ -69,7 +74,7 @@
           class="htmx-indicator inline"
           src="/spinner.svg"
         />
-        <p>This is a (potentially abbreviated) title of the quest that will appear in URLs. Only lowercase alphanumeric characters are allowed.</p>
+        <p>This is a (potentially abbreviated) title of the quest that will appear in URLs. Only lowercase letters and numbers are allowed. Must be at least 3 and at most 30 characters long.</p>
       </div>
     </fieldset>
     <div class="border-t-2 py-2">

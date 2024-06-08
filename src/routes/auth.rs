@@ -1,12 +1,8 @@
 // use actix_web::dev::HttpServiceFactory;
+use actix_web::cookie;
+use actix_web::cookie::Cookie;
 use actix_web::dev::ServiceFactory;
 use actix_web::dev::ServiceRequest;
-use actix_web::HttpRequest;
-use actix_web::{cookie, get, post, web, HttpResponse, Responder};
-use anyhow::Context;
-use askama::Template;
-use askama_actix::TemplateToResponse;
-use awc::cookie::Cookie;
 use awc::Client;
 use fred::clients::RedisPool;
 use fred::error::RedisError;
@@ -14,26 +10,22 @@ use fred::interfaces::HashesInterface;
 use fred::interfaces::KeysInterface;
 use fred::interfaces::TransactionInterface;
 use fred::prelude::RedisValue;
-use log::info;
-use log::{trace, warn};
 use oauth2::reqwest::async_http_client;
 use oauth2::{
     AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, Scope,
     StandardRevocableToken, TokenResponse,
 };
 use rand::distributions::{Alphanumeric, DistString};
-use serde::Deserialize;
 use sqlx::Executor;
 use sqlx::Row;
 use std::collections::HashMap;
-use uuid::Uuid;
 
 use crate::app_state::CompiledRegexes;
-use crate::app_state::{AppConfig, AppState};
-use crate::error::{Error, Result};
 use crate::key;
 use crate::partials;
 use crate::session::SESSION_ID_COOKIE;
+
+use crate::routes::prelude::*;
 
 const OAUTH_EXPIRATION_SEC: i64 = 60 * 10;
 const ACCOUNT_CREATION_TIMEOUT_SEC: i64 = 60 * 60;

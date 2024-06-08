@@ -57,8 +57,8 @@ create domain url_part as text check ( value ~ '^[a-z0-9]+$' );
 -- A quest.
 create table quest (
   id uuid primary key,
-  title text not null,
-  slug url_part unique not null,
+  title text not null check (length(title) < 250),
+  slug url_part unique not null check (length(slug) < 30),
   short_description text check (length(short_description) <= 250),
   long_description text check (length(long_description) <= 5000),
   questmaster uuid references account not null,
@@ -115,10 +115,12 @@ create table quest_post (
   id uuid primary key,
   -- What quest the post is under.
   quest uuid references quest not null,
+  -- Title of the post.
+  title text,
   -- Actual text of the post.
   body text not null constraint not_empty check (body <> ''),
   -- When the post was created.
-  created_at timestamptz not null,
+  created_at timestamptz not null default current_timestamp,
   -- Whether it's been published. Null if unpublished.
   published_at timestamptz null,
   -- What state the post is in.
@@ -128,6 +130,7 @@ create table quest_post (
 comment on table quest_post is 'A post on a quest, created by the questmaster.';
 comment on column quest_post.id is 'Post ID';
 comment on column quest_post.quest is 'What quest the post is under.';
+comment on column quest_post.title is 'Title of the post.';
 comment on column quest_post.body is 'Actual text of the post.';
 comment on column quest_post.created_at is 'When the post was created.';
 comment on column quest_post.published_at is 'Whether it has been published. Null if unpublished.';

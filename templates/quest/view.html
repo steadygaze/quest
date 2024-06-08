@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1 class="mb-1 text-2xl font-bold">{{ title }}</h1>
+  <ul>
+    {% for post in posts %}
+      <p>{{ post.title }}</p>
+      <pre>{{ post.body }}</pre>
+      {% if !loop.last %}
+        <hr />
+      {% endif %}
+    {% endfor %}
+  </ul>
+{% endblock content %}

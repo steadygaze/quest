@@ -1,6 +1,7 @@
-pub mod auth;
-pub mod qm;
-pub mod quest;
+mod auth;
+mod prelude;
+mod qm;
+mod quest;
 
 use actix_web::dev::ServiceFactory;
 use actix_web::dev::ServiceRequest;
@@ -12,5 +13,5 @@ where
 {
     app.service(auth::add_routes(web::scope("/auth")))
         .service(qm::add_routes(web::scope("/qm")))
-        .service(quest::add_routes(web::scope("/quest")))
+        .service(quest::add_routes(web::scope("/@{username}")))
 }

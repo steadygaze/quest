@@ -21,6 +21,7 @@
           value="{{ email }}"
           class="border-2 border-slate-100"
           required
+          maxlength="1000"
           disabled
           {# User can't change their email because it's the one they oauth'd with. Also, the server remembers the email, so we don't have to bother including it in the form submission. #}
         />
@@ -108,6 +109,7 @@
           name="display-name"
           id="display-name"
           placeholder="Display name"
+          maxlength="30"
           x-model="displayName"
           x-bind:disabled="!createProfile"
           x-on:keyup="if (!usernameDirty) {username = usernameify(displayName);}"
@@ -115,7 +117,7 @@
         />
         <p>
           This text is displayed alongside your username for others to easily
-          identify you.
+          identify you. Up to 30 characters long.
         </p>
       </div>
       <div class="border-t-2 py-2">
@@ -125,6 +127,10 @@
           name="username"
           id="username"
           placeholder="Username"
+          required
+          minlength="3"
+          maxlength="30"
+          pattern="[a-z][a-z0-9]*"
           x-model="username"
           x-bind:disabled="!createProfile"
           x-on:keyup="usernameDirty = username !== '' && username !== usernameify(displayName)"
@@ -171,8 +177,8 @@
         <p>
           A username is also used to identify you, but may be abbreviated
           compared to the display name. It may be used by others to refer to
-          you. It may contain only letters or numbers, must be at least three
-          characters long, and must start with a letter.
+          you. It may contain only letters or numbers, be between three and
+          thirty characters long, and must start with a letter.
         </p>
       </div>
       <div x-data="{bioText: ''}" class="border-t-2 py-2">
@@ -181,6 +187,7 @@
           name="bio"
           id="bio"
           placeholder="Bio"
+          maxlength="500"
           x-model="bioText"
           x-bind:disabled="!createProfile"
           class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"

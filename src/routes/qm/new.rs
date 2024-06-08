@@ -1,24 +1,8 @@
 use actix_web::dev::ServiceFactory;
 use actix_web::dev::ServiceRequest;
-use actix_web::get;
-use actix_web::post;
-use actix_web::web;
-use actix_web::HttpRequest;
-use actix_web::HttpResponse;
-use actix_web::Responder;
-use anyhow::Context;
-use askama_actix::Template;
-use askama_actix::TemplateToResponse;
-use serde::Deserialize;
-use uuid::Uuid;
 
-use crate::app_state::AppConfig;
-use crate::app_state::AppState;
-use crate::error::Error;
-use crate::error::Result;
 use crate::partials;
-use crate::session::get_session_info;
-use crate::session::SESSION_ID_COOKIE;
+use crate::routes::prelude::*;
 
 pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
     scope
@@ -108,7 +92,34 @@ async fn create_new_quest_submit(
     let (session_info, account_id) = app_state.get_session(request).await?;
     // TODO - Must be QM to view this page.
 
-    sqlx::query_as(
+    let mut transaction = app_state
+        .db_pool
+        .begin()
+        .await
+        .context("Failed to create transaction")?;
+
+    if let (true,) = sqlx::query_as(
+        r#"
+        select exists (
+            select 1 from quest
+            where questmaster = $1 and slug = $2
+            limit 1
+        )
+        "#,
+    )
+    .bind(account_id)
+    .bind(&form.slug)
+    .fetch_one(&mut *transaction)
+    .await
+    .context("Failed to check if quest exists")?
+    {
+        return Err(Error::AppError(format!(
+            "Quest with slug {} already exists",
+            form.slug
+        )));
+    }
+
+    sqlx::query(
         r#"
         insert into quest (id, questmaster, title, slug)
         values ($1, $2, $3, $4)
@@ -118,8 +129,11 @@ async fn create_new_quest_submit(
     .bind(account_id)
     .bind(&form.title)
     .bind(&form.slug)
-    .fetch_one(&app_state.db_pool)
+    .execute(&mut *transaction)
     .await
     .context("Failed to insert new quest")?;
-    Ok(HttpResponse::Ok().body("ok"))
+
+    transaction.commit().await.context("Failed to commit")?;
+    Ok(HttpResponse::Ok().body("created new quest"))
+    // TODO - Redirect to new quest editing view.
 }

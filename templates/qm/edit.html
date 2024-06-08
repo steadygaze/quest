@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1 class="mb-1 text-2xl font-bold">{{ title }}</h1>
+  <p class="mb-2">Use this form to post a new update.</p>
+  <form action="/qm/edit/{{ slug }}" method="post">
+    <fieldset class="my-2 border-2 border-slate-500 p-2">
+      <legend class="text-xl font-bold">New update</legend>
+      <div class="pb-2">
+        <label for="title">Title: </label>
+        <input
+          type="title"
+          name="title"
+          id="title"
+          placeholder="Update title"
+          class="border-2 border-slate-100"
+          maxlength="250"
+        />
+        <p>Optional title of the update. Similar to a chapter title.</p>
+      </div>
+      <div class="pb-2">
+        <p><label for="body">Body: </label></p>
+        <textarea name="body" id="body" placeholder="Body" rows="10" class="w-full"></textarea>
+      </div>
+    </fieldset>
+    <div class="border-t-2 py-2">
+      <input
+        class="bg-green-200 px-2 py-0.5 font-bold hover:bg-green-400"
+        type="submit"
+        value="Post update"
+      />
+    </div>
+  </form>
+{% endblock content %}

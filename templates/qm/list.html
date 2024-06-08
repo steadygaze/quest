@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1 class="mb-1 text-2xl font-bold">Your quests</h1>
+  <p><a href="/qm/new">Create a new quest</a></p>
+  <ul>
+    {% for quest in quests %}
+      <li>
+        <a href="/qm/edit/{{ quest.slug }}"
+          >{{ quest.title }} | <code>{{ quest.slug }}</code></a
+        >
+      </li>
+    {% endfor %}
+  </ul>
+{% endblock content %}
