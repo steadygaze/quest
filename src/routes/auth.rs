@@ -35,6 +35,7 @@ const SESSION_TTL_SEC: i64 = SESSION_TTL_DAYS * 24 * 60 * 60; // 30 days
 /// Add auth-related routes.
 pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
     scope
+        .service(login_options)
         .service(discord_start)
         .service(discord_callback)
         .service(create_account)
@@ -53,6 +54,21 @@ pub async fn test(app_state: web::Data<AppState>) -> impl Responder {
         secret: "mysecret",
     }
     .to_response()
+}
+
+#[derive(Template)]
+#[template(path = "auth/login.html")]
+struct LoginTemplate<'a> {
+    config: &'a AppConfig,
+}
+
+/// Login options page to present different oauth providers.
+#[get("/")]
+pub async fn login_options(app_state: web::Data<AppState>) -> Result<impl Responder> {
+    Ok(LoginTemplate {
+        config: &app_state.config,
+    }
+    .to_response())
 }
 
 /// Start Discord oauth by generating a PKCE challenge and redirecting.

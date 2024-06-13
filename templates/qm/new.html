@@ -2,7 +2,12 @@
 {% block content %}
   <h1 class="mb-1 text-2xl font-bold">Create a new quest</h1>
   <p class="mb-2">Use this form to create a new quest.</p>
-  <form id="new-quest-form" action="/qm/new" method="post" x-data="{title: '', slug: '', slugDirty: false}">
+  <form
+    id="new-quest-form"
+    action="/qm/new"
+    method="post"
+    x-data="{title: '', slug: '', slugDirty: false}"
+  >
     <fieldset class="my-2 border-2 border-slate-500 p-2">
       <legend class="text-xl font-bold">Basic info</legend>
       <div class="pb-2">
@@ -19,7 +24,10 @@
           x-model="title"
           x-on:keyup="if (!slugDirty) {slug = usernameify(title);}"
         />
-        <p>The full title of the quest. Must be at least 3 characters and at most 250 characters long.</p>
+        <p>
+          The full title of the quest. Must be at least 3 characters and at most
+          250 characters long.
+        </p>
       </div>
       <div class="pb-2">
         <label for="slug">Slug: </label>
@@ -72,9 +80,13 @@
         <img
           id="slug-spinner"
           class="htmx-indicator inline"
-          src="/spinner.svg"
+          src="/img/spinner.svg"
         />
-        <p>This is a (potentially abbreviated) title of the quest that will appear in URLs. Only lowercase letters and numbers are allowed. Must be at least 3 and at most 30 characters long.</p>
+        <p>
+          This is a (potentially abbreviated) title of the quest that will
+          appear in URLs. Only lowercase letters and numbers are allowed. Must
+          be at least 3 and at most 30 characters long.
+        </p>
       </div>
     </fieldset>
     <div class="border-t-2 py-2">

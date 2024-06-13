@@ -29,4 +29,3 @@ You can simply run `cargo run` and access the site at the default location (`loc
    ```
 
 3. Open the site at the port provided by Browsersync (likely `3000`), rather than the unproxied application port (`8080`).
-
