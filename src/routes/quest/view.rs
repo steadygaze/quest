@@ -15,6 +15,7 @@ struct ListPost {
 #[template(path = "quest/view.html")]
 struct ViewQuestTemplate<'a> {
     config: &'a AppConfig,
+    current_profile: &'a Option<ProfileRenderInfo>,
     title: &'a String,
     posts: &'a Vec<ListPost>,
 }
@@ -26,7 +27,7 @@ async fn view_quest(
     request: HttpRequest,
 ) -> Result<impl Responder> {
     let (username, slug) = info.into_inner();
-    let (session_info, account_id) = app_state.get_session(request).await?;
+    let session_info = app_state.get_session(request).await.transpose()?;
 
     // TODO - Handle user doesn't exist.
     // TODO - Handle quest doesn't exist.
@@ -50,6 +51,7 @@ async fn view_quest(
 
     Ok(ViewQuestTemplate {
         config: &app_state.config,
+        current_profile: &session_info.and_then(|session_info| session_info.current_profile),
         title: &"Placeholder".to_string(),
         posts: &posts,
     }

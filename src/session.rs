@@ -26,6 +26,19 @@ fn background_clear_session(redis_pool: &RedisPool, session_id: &str) {
     });
 }
 
+/// Data associated with a session.
+pub struct SessionInfo {
+    pub raw: HashMap<String, String, RandomState>,
+    pub account_id: Uuid,
+    pub current_profile: Option<ProfileRenderInfo>,
+}
+
+/// Data necessary for rendering a page with a logged in user.
+pub struct ProfileRenderInfo {
+    pub display_name: String,
+    pub username: String,
+}
+
 /// Helper function to retrieve a user's session details, with some basic
 /// validation. Note that the AuthenticationError handler will clear the user's
 /// session cookie.
@@ -33,38 +46,53 @@ pub async fn get_session_info(
     redis_pool: &RedisPool,
     alphanumeric: &Regex,
     session_id: &str,
-) -> Result<(HashMap<String, String, RandomState>, Uuid)> {
+) -> Result<SessionInfo> {
     if session_id.len() != 32 || !alphanumeric.is_match(session_id) {
         return Err(Error::AuthenticationError(
             "Your session was corrupted. Try logging in again.".to_string(),
         ));
     }
-    let session_info = redis_pool
+    let raw = redis_pool
         .hgetall::<HashMap<String, String, _>, _>(key::session(session_id))
         .await
         .context("Failed to retrieve session info")?;
-    match session_info.get("account_id") {
-        Some(uuid) => {
-            let uuid = match Uuid::try_parse(uuid) {
-                Ok(uuid) => uuid,
+    // TODO - Create shortened hash key constant system.
+    match raw.get("account_id") {
+        Some(account_id) => {
+            let account_id = match Uuid::try_parse(account_id) {
+                Ok(account_id) => account_id,
                 Err(err) => {
-                    log::error!("Unparseable account_id: {}", uuid);
+                    log::error!("Unparseable account_id: {}", account_id);
                     background_clear_session(redis_pool, session_id);
                     return Err(Error::AuthenticationError(
                         "Your session was corrupted. Try logging in again.".to_string(),
                     ));
                 }
             };
-            Ok((session_info, uuid))
+
+            let current_profile = raw.get("username").and_then(|username| {
+                raw.get("display_name").and_then(|display_name| {
+                    Some(ProfileRenderInfo {
+                        username: username.clone(),
+                        display_name: display_name.clone(),
+                    })
+                })
+            });
+
+            Ok(SessionInfo {
+                raw,
+                account_id,
+                current_profile,
+            })
         }
         None => {
-            if !session_info.is_empty() {
+            if !raw.is_empty() {
                 // A session hash with no account_id is invalid. Delete it.
                 background_clear_session(redis_pool, session_id);
             }
-            Err(Error::AuthenticationError(
+            return Err(Error::AuthenticationError(
                 "Your session expired or was corrupted. Try logging in again.".to_string(),
-            ))
+            ));
         }
     }
 }

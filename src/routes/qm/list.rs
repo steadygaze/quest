@@ -17,6 +17,7 @@ struct ListQuest {
 #[template(path = "qm/list.html")]
 struct ListQuestTemplate<'a> {
     config: &'a AppConfig,
+    current_profile: &'a Option<ProfileRenderInfo>,
     quests: &'a Vec<ListQuest>,
 }
 
@@ -25,7 +26,11 @@ async fn list_quests(
     app_state: web::Data<AppState>,
     request: HttpRequest,
 ) -> Result<impl Responder> {
-    let (session_info, account_id) = app_state.get_session(request).await?;
+    let SessionInfo {
+        account_id,
+        current_profile,
+        ..
+    } = app_state.require_session(request).await?;
     // TODO - Must be QM to view this page.
 
     let quests: Vec<ListQuest> = sqlx::query_as(
@@ -42,6 +47,7 @@ async fn list_quests(
 
     Ok(ListQuestTemplate {
         config: &app_state.config,
+        current_profile: &current_profile,
         quests: &quests,
     }
     .to_response())

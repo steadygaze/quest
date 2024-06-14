@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     error::{Error, Result},
-    session,
+    session::{self, ProfileRenderInfo, SessionInfo},
 };
 
 /// Actix state object that all route handlers will have access to.
@@ -25,24 +25,30 @@ pub struct AppState {
 
 impl AppState {
     /// Helper to get a user's session details.
-    pub async fn get_session(
-        &self,
-        request: HttpRequest,
-    ) -> Result<(HashMap<String, String, RandomState>, Uuid)> {
-        let session_cookie = match request.cookie(session::SESSION_ID_COOKIE) {
-            Some(session_cookie) => session_cookie,
-            None => {
-                return Err(Error::AuthorizationError(
-                    "You must be logged in to access this page.".to_string(),
-                ))
-            }
-        };
-        session::get_session_info(
-            &self.redis_pool,
-            &self.regex.alphanumeric,
-            session_cookie.value(),
-        )
-        .await
+    pub async fn get_session(&self, request: HttpRequest) -> Option<Result<SessionInfo>> {
+        if let Some(session_cookie) = request.cookie(session::SESSION_ID_COOKIE) {
+            Some(
+                session::get_session_info(
+                    &self.redis_pool,
+                    &self.regex.alphanumeric,
+                    session_cookie.value(),
+                )
+                .await,
+            )
+        } else {
+            None
+        }
+    }
+
+    /// Helper to get a user's session details that also requires that they be
+    /// logged in.
+    pub async fn require_session(&self, request: HttpRequest) -> Result<SessionInfo> {
+        match self.get_session(request).await {
+            Some(session_info) => session_info,
+            None => Err(Error::AuthorizationError(
+                "You must be logged in to access this page.".to_string(),
+            )),
+        }
     }
 }
 

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1 class="mb-1 text-2xl font-bold">Choose profile</h1>
+  <p>
+    When signed in, either one profile is "active" and all posts will be made as
+    that profile, or none are active, and you will be in reader mode.
+  </p>
+  <form action="/auth/choose_profile" method="post">
+    <fieldset class="my-2 border-2 border-slate-500 p-2">
+      <legend class="text-l font-bold">Choose the active profile:</legend>
+
+      <div>
+        <input
+          type="radio"
+          id="@"
+          name="profile"
+          value="@"
+          {% if let None = current_profile %}checked{% endif %}
+        />
+        <label for="@">No profile (reader mode)</label>
+      </div>
+
+      {% for (username, display_name) in profiles %}
+        <div>
+          <input
+            type="radio"
+            id="{{ username }}"
+            name="profile"
+            value="{{ username }}"
+            {% if let Some(current_profile) = current_profile %}
+              {% if current_profile.username == username.as_str() %}
+                checked
+              {% endif %}
+            {% endif %}
+          />
+          <label for="{{ username }}"
+            >{{ display_name }} (@{{ username }})</label
+          >
+        </div>
+      {% endfor %}
+    </fieldset>
+
+    <input
+      class="bg-green-200 px-2 py-0.5 font-bold hover:bg-green-400"
+      type="submit"
+      value="Set profile"
+    />
+  </form>
+{% endblock content %}

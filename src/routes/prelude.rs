@@ -9,3 +9,5 @@ pub use uuid::Uuid;
 
 pub use crate::app_state::{AppConfig, AppState};
 pub use crate::error::{Error, Result};
+pub use crate::partials::*;
+pub use crate::session::{ProfileRenderInfo, SessionInfo};

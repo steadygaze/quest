@@ -2,9 +2,13 @@
 
 {% block content %}
   <h1 class="mb-1 text-2xl font-bold">Login/Register</h1>
-  <p class="my-2">You can log in/register on this page. If you don't have an account at the associated email address, you will have the opportunity to create one. How would you like to log in?</p>
-  <div class="flex items-center">
-    <div class="w-40">
+  <p class="my-2">
+    You can log in/register on this page. If you don't have an account at the
+    associated email address, you will have the opportunity to create one. How
+    would you like to log in?
+  </p>
+  <div class="flex content-center items-center justify-center place-content-center place-items-center">
+    <div class="border-2 bg-inherit hover:border-green-500">
       <a href="/auth/discord/start">
         <img
           src="/img/discord-mark-white.svg"
@@ -12,7 +16,7 @@
           height="96px"
           class="bg-black p-4"
         />
-        <p>Discord Oauth</p>
+        <p class="text-center">Discord Oauth</p>
       </a>
     </div>
   </div>

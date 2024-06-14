@@ -15,6 +15,7 @@ use env_logger::Env;
 use fred::interfaces::ClientLike;
 use listenfd::ListenFd;
 use regex::Regex;
+use session::ProfileRenderInfo;
 
 mod app_state;
 mod error;
@@ -31,6 +32,7 @@ include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 #[template(path = "index.html")]
 struct IndexTemplate<'a> {
     config: &'a AppConfig,
+    current_profile: &'a Option<ProfileRenderInfo>,
     name: &'a str,
 }
 
@@ -39,6 +41,7 @@ pub async fn index(app_state: web::Data<AppState>, request: HttpRequest) -> impl
     log::trace!("Got sid cookie {:?}", request.cookie("sid"));
     IndexTemplate {
         config: &app_state.config,
+        current_profile: &None,
         name: "Alice",
     }
     .to_response()

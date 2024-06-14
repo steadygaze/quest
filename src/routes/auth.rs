@@ -3,6 +3,7 @@ use actix_web::cookie;
 use actix_web::cookie::Cookie;
 use actix_web::dev::ServiceFactory;
 use actix_web::dev::ServiceRequest;
+use askama_actix::TemplateToResponse;
 use awc::Client;
 use fred::clients::RedisPool;
 use fred::error::RedisError;
@@ -43,6 +44,7 @@ pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
         .service(check_if_user_already_exists)
         .service(cancel_create_account)
         .service(logout)
+        .service(choose_profile)
 }
 
 /// Temporary endpoint for testing the auth page template.
@@ -50,6 +52,7 @@ pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
 pub async fn test(app_state: web::Data<AppState>) -> impl Responder {
     CreateAccountTemplate {
         config: &app_state.config,
+        current_profile: &None,
         email: "test@test.com",
         secret: "mysecret",
     }
@@ -60,6 +63,7 @@ pub async fn test(app_state: web::Data<AppState>) -> impl Responder {
 #[template(path = "auth/login.html")]
 struct LoginTemplate<'a> {
     config: &'a AppConfig,
+    current_profile: &'a Option<ProfileRenderInfo>,
 }
 
 /// Login options page to present different oauth providers.
@@ -67,6 +71,7 @@ struct LoginTemplate<'a> {
 pub async fn login_options(app_state: web::Data<AppState>) -> Result<impl Responder> {
     Ok(LoginTemplate {
         config: &app_state.config,
+        current_profile: &None,
     }
     .to_response())
 }
@@ -128,6 +133,7 @@ struct DiscordUser {
 #[template(path = "auth/create_account.html")]
 struct CreateAccountTemplate<'a> {
     config: &'a AppConfig,
+    current_profile: &'a Option<ProfileRenderInfo>,
     email: &'a str,
     secret: &'a str,
 }
@@ -291,6 +297,7 @@ pub async fn discord_callback(
 
             let mut response = partials::MessagePageTemplate {
                 config: &app_state.config,
+                current_profile: &None,
                 page_title: &Some("Logged in"),
                 message: format!("You are now logged in as {discord_email}.").as_str(),
             }
@@ -338,6 +345,7 @@ pub async fn discord_callback(
 
     Ok(CreateAccountTemplate {
         config: &app_state.config,
+        current_profile: &None,
         email: discord_email.as_str(),
         secret: new_account_secret.as_str(),
     }
@@ -521,6 +529,7 @@ pub async fn create_account(
         .context("Failed to create new session after account creation")?;
     let mut response = partials::MessagePageTemplate {
         config: &app_state.config,
+        current_profile: &None,
         page_title: &Some("Logged in"),
         message: "Account created successfully. You are now logged in.",
     }
@@ -545,6 +554,7 @@ pub async fn cancel_create_account(
 
     Ok(partials::MessagePageTemplate {
         config: &app_state.config,
+        current_profile: &None,
         page_title: &Some("Cancelled"),
         message: "Account creation cancelled; your information has been forgotten. If you want to create a new account, start over.",
     }
@@ -566,6 +576,7 @@ pub async fn logout(
 
         let mut response = partials::MessagePageTemplate {
             config: &app_state.config,
+            current_profile: &None,
             page_title: &Some("Logged out"),
             message: "You are now logged out. Goodbye.",
         }
@@ -581,6 +592,7 @@ pub async fn logout(
     } else {
         Ok(partials::MessagePageTemplate {
             config: &app_state.config,
+            current_profile: &None,
             page_title: &Some("Logged out"),
             message: "You were already logged out.",
         }
@@ -588,4 +600,42 @@ pub async fn logout(
     }
 }
 
-// TODO - Add logout mechanism.
+#[derive(Template)]
+#[template(path = "auth/choose_profile.html")]
+struct ChooseProfileTemplate<'a> {
+    config: &'a AppConfig,
+    current_profile: &'a Option<ProfileRenderInfo>,
+    profiles: &'a Vec<(String, String)>,
+}
+
+#[get("/choose_profile")]
+pub async fn choose_profile(
+    app_state: web::Data<AppState>,
+    request: HttpRequest,
+) -> Result<impl Responder> {
+    let SessionInfo {
+        account_id,
+        current_profile,
+        ..
+    } = app_state.require_session(request).await?;
+
+    let profiles: Vec<(String, String)> = sqlx::query_as(
+        r#"
+        select username, display_name
+        from profile
+        where account_id = $1
+        order by display_name asc
+        "#,
+    )
+    .bind(account_id)
+    .fetch_all(&app_state.db_pool)
+    .await
+    .context("Failed to get profiles")?;
+
+    Ok(ChooseProfileTemplate {
+        config: &app_state.config,
+        current_profile: &current_profile,
+        profiles: &profiles,
+    }
+    .to_response())
+}

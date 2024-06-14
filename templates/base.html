@@ -40,13 +40,18 @@
           <nav
             class="min-w-32 border-4 border-slate-500 bg-slate-50 p-2 [border-style:ridge] lg:fixed lg:top-4 lg:mr-2"
           >
-            <!-- <nav class="fixed left-0 top-0 object-right-top max-w-80"> -->
-            <h1 class="mb-1 text-2xl">Guest</h1>
-            <ul>
-              <li class="hover:bg-slate-200"><a href="/auth/">Log in/Register</a></li>
-              <li class="hover:bg-slate-200">Profile</li>
-              <li class="hover:bg-slate-200">Notifications</li>
-            </ul>
+            {% if let Some(current_profile) = current_profile %}
+              <h1 class="mb-1 text-2xl">{{ current_profile.display_name }} (@{{current_profile.username}})</h1>
+              <ul>
+                <li class="hover:bg-slate-200">Profile</li>
+                <li class="hover:bg-slate-200">Notifications</li>
+              </ul>
+            {% else %}
+              <h1 class="mb-1 text-2xl">Guest</h1>
+              <ul>
+                <li class="hover:bg-slate-200"><a href="/auth/">Log in/Register</a></li>
+              </ul>
+            {% endif %}
           </nav>
         </div>
       </div>

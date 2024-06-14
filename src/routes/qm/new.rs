@@ -15,6 +15,7 @@ pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
 #[template(path = "qm/new.html")]
 struct NewQuestTemplate<'a> {
     config: &'a AppConfig,
+    current_profile: &'a Option<ProfileRenderInfo>,
 }
 
 #[get("/new")]
@@ -22,11 +23,16 @@ async fn create_new_quest_form(
     app_state: web::Data<AppState>,
     request: HttpRequest,
 ) -> Result<impl Responder> {
-    let (session_info, account_id) = app_state.get_session(request).await?;
+    let SessionInfo {
+        account_id,
+        current_profile,
+        ..
+    } = app_state.require_session(request).await?;
     // TODO - Must be QM to view this page.
 
     Ok(NewQuestTemplate {
         config: &app_state.config,
+        current_profile: &current_profile,
     }
     .to_response())
 }
@@ -42,8 +48,12 @@ async fn check_existing_slug(
     slug: web::Query<Slug>,
     request: HttpRequest,
 ) -> impl Responder {
-    let (session_info, account_id) = match app_state.get_session(request).await {
-        Ok(tup) => tup,
+    let SessionInfo {
+        account_id,
+        current_profile,
+        ..
+    } = match app_state.require_session(request).await {
+        Ok(info) => info,
         // This is for injection via HTMX, so we can't show a full error page.
         _ => return partials::FailureTemplate { text: "error" }.to_response(),
     };
@@ -89,7 +99,11 @@ async fn create_new_quest_submit(
     form: web::Form<NewQuestForm>,
     request: HttpRequest,
 ) -> Result<impl Responder> {
-    let (session_info, account_id) = app_state.get_session(request).await?;
+    let SessionInfo {
+        account_id,
+        current_profile,
+        ..
+    } = app_state.require_session(request).await?;
     // TODO - Must be QM to view this page.
 
     let mut transaction = app_state

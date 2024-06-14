@@ -10,6 +10,7 @@ pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
 #[template(path = "qm/edit.html")]
 struct EditQuestTemplate<'a> {
     config: &'a AppConfig,
+    current_profile: &'a Option<ProfileRenderInfo>,
     title: &'a String,
     slug: &'a String,
 }
@@ -21,7 +22,11 @@ async fn edit_quest(
     request: HttpRequest,
 ) -> Result<impl Responder> {
     let (slug,) = info.into_inner();
-    let (session_info, account_id) = app_state.get_session(request).await?;
+    let SessionInfo {
+        account_id,
+        current_profile,
+        ..
+    } = app_state.require_session(request).await?;
 
     let (title,): (String,) = sqlx::query_as(
         r#"
@@ -39,6 +44,7 @@ async fn edit_quest(
 
     Ok(EditQuestTemplate {
         config: &app_state.config,
+        current_profile: &current_profile,
         title: &title,
         slug: &slug,
     }
@@ -59,7 +65,11 @@ async fn edit_quest_submit(
     request: HttpRequest,
 ) -> Result<impl Responder> {
     let (slug,) = info.into_inner();
-    let (session_info, account_id) = app_state.get_session(request).await?;
+    let SessionInfo {
+        account_id,
+        current_profile,
+        ..
+    } = app_state.require_session(request).await?;
     // TODO - Must be the QM of this quest.
 
     let mut transaction = app_state
