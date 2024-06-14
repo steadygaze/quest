@@ -1,9 +1,7 @@
 use crate::routes::prelude::*;
 
 pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
-    let scope = scope.service(edit_quest);
-    let scope = scope.service(edit_quest_submit);
-    scope
+    scope.service(edit_quest).service(edit_quest_submit)
 }
 
 #[derive(Template)]

@@ -30,6 +30,7 @@ fn background_clear_session(redis_pool: &RedisPool, session_id: &str) {
 pub struct SessionInfo {
     pub raw: HashMap<String, String, RandomState>,
     pub account_id: Uuid,
+    pub session_id: String,
     pub current_profile: Option<ProfileRenderInfo>,
 }
 
@@ -82,6 +83,7 @@ pub async fn get_session_info(
             Ok(SessionInfo {
                 raw,
                 account_id,
+                session_id: session_id.to_string(),
                 current_profile,
             })
         }

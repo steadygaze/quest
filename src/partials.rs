@@ -1,7 +1,7 @@
 /// Wrapper library for HTML partials.
 use askama_actix::Template;
 
-use crate::{app_state::AppConfig, session::ProfileRenderInfo};
+use crate::app_state::{AppConfig, ProfileRenderInfo};
 
 #[derive(Template)]
 #[template(path = "partials/success.html")]

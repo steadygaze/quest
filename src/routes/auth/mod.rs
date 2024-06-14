@@ -1,4 +1,5 @@
-// use actix_web::dev::HttpServiceFactory;
+mod choose_profile;
+
 use actix_web::cookie;
 use actix_web::cookie::Cookie;
 use actix_web::dev::ServiceFactory;
@@ -17,14 +18,14 @@ use oauth2::{
     StandardRevocableToken, TokenResponse,
 };
 use rand::distributions::{Alphanumeric, DistString};
+use regex::Regex;
 use sqlx::Executor;
 use sqlx::Row;
 use std::collections::HashMap;
 
-use crate::app_state::CompiledRegexes;
+use crate::app_state::{CompiledRegexes, SESSION_ID_COOKIE};
 use crate::key;
 use crate::partials;
-use crate::session::SESSION_ID_COOKIE;
 
 use crate::routes::prelude::*;
 
@@ -35,6 +36,7 @@ const SESSION_TTL_SEC: i64 = SESSION_TTL_DAYS * 24 * 60 * 60; // 30 days
 
 /// Add auth-related routes.
 pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
+    let scope = choose_profile::add_routes(scope);
     scope
         .service(login_options)
         .service(discord_start)
@@ -44,7 +46,6 @@ pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
         .service(check_if_user_already_exists)
         .service(cancel_create_account)
         .service(logout)
-        .service(choose_profile)
 }
 
 /// Temporary endpoint for testing the auth page template.
@@ -116,7 +117,7 @@ enum DiscordOauthRedirectParams {
         code: String,
         state: String,
     },
-    /// Usually when the user rejected/cancelled login.
+    /// Usually when the user rejected/cancelled login.>
     DiscordApiError {
         error: String,
         error_description: String,
@@ -144,7 +145,6 @@ pub async fn discord_callback(
     params: web::Query<DiscordOauthRedirectParams>,
     request: HttpRequest,
 ) -> Result<impl Responder> {
-    trace!("Got oauth params: {:?}", params);
     let params = params.into_inner();
     use DiscordOauthRedirectParams as Params;
 
@@ -355,7 +355,7 @@ pub async fn discord_callback(
 
 /// URL params for account creation form.
 #[derive(Debug, Deserialize)]
-struct RegisterUserFormData {
+struct RegisterUserForm {
     secret: String,
     #[serde(rename = "create-profile")]
     create_profile: Option<String>, // "on" or "off"
@@ -441,17 +441,17 @@ async fn create_session<'a>(
 
 /// First character is a letter, username is between 3 and 30 characters long,
 /// and is alphanumeric.
-fn valid_username(regex: &CompiledRegexes, username: &str) -> bool {
+pub fn valid_username(alphanumeric: &Regex, username: &str) -> bool {
     username.chars().next().is_some_and(|x| x.is_lowercase())
         && username.len() >= 3
         && username.len() < 30
-        && regex.alphanumeric.is_match(username)
+        && alphanumeric.is_match(username)
 }
 
 #[post("/create_account")]
 pub async fn create_account(
     app_state: web::Data<AppState>,
-    form: web::Form<RegisterUserFormData>,
+    form: web::Form<RegisterUserForm>,
     request: HttpRequest,
 ) -> Result<impl Responder> {
     if form.create_profile.as_ref().is_some_and(|x| x == "on")
@@ -459,7 +459,7 @@ pub async fn create_account(
             || form
                 .username
                 .as_ref()
-                .is_some_and(|x| !valid_username(&app_state.regex, x)))
+                .is_some_and(|x| !valid_username(&app_state.regex.alphanumeric, x)))
     {
         trace!("Rejecting bad username: {:?}", form.username);
         return Err(Error::AppError("Bad username".to_string()));
@@ -543,7 +543,7 @@ pub async fn create_account(
 #[post("/cancel_create_account")]
 pub async fn cancel_create_account(
     app_state: web::Data<AppState>,
-    form: web::Form<RegisterUserFormData>,
+    form: web::Form<RegisterUserForm>,
 ) -> Result<impl Responder> {
     // We don't care if we didn't remove anything; the key could've expired.
     let _rows_deleted = app_state
@@ -598,44 +598,4 @@ pub async fn logout(
         }
         .to_response())
     }
-}
-
-#[derive(Template)]
-#[template(path = "auth/choose_profile.html")]
-struct ChooseProfileTemplate<'a> {
-    config: &'a AppConfig,
-    current_profile: &'a Option<ProfileRenderInfo>,
-    profiles: &'a Vec<(String, String)>,
-}
-
-#[get("/choose_profile")]
-pub async fn choose_profile(
-    app_state: web::Data<AppState>,
-    request: HttpRequest,
-) -> Result<impl Responder> {
-    let SessionInfo {
-        account_id,
-        current_profile,
-        ..
-    } = app_state.require_session(request).await?;
-
-    let profiles: Vec<(String, String)> = sqlx::query_as(
-        r#"
-        select username, display_name
-        from profile
-        where account_id = $1
-        order by display_name asc
-        "#,
-    )
-    .bind(account_id)
-    .fetch_all(&app_state.db_pool)
-    .await
-    .context("Failed to get profiles")?;
-
-    Ok(ChooseProfileTemplate {
-        config: &app_state.config,
-        current_profile: &current_profile,
-        profiles: &profiles,
-    }
-    .to_response())
 }

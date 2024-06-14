@@ -7,7 +7,6 @@ pub use log::{info, trace, warn};
 pub use serde::Deserialize;
 pub use uuid::Uuid;
 
-pub use crate::app_state::{AppConfig, AppState};
+pub use crate::app_state::{AppConfig, AppState, ProfileRenderInfo, SessionInfo};
 pub use crate::error::{Error, Result};
 pub use crate::partials::*;
-pub use crate::session::{ProfileRenderInfo, SessionInfo};

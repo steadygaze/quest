@@ -15,7 +15,7 @@ use actix_web::{
 use askama::Template;
 use awc::cookie::Cookie;
 
-use crate::session::SESSION_ID_COOKIE;
+use crate::app_state::SESSION_ID_COOKIE;
 
 /// Common errors that can be unwrapped in handlers.
 #[derive(thiserror::Error, Debug)]

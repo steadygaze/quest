@@ -3,7 +3,7 @@
 #![allow(unused_variables)]
 // Temporarily disable some warnings for development.
 
-use crate::app_state::{AppConfig, AppState, CompiledRegexes};
+use crate::app_state::{AppConfig, AppState, CompiledRegexes, ProfileRenderInfo};
 
 use actix_web::HttpRequest;
 use actix_web::{get, http, middleware, web, App, HttpResponse, HttpServer, Responder};
@@ -15,7 +15,6 @@ use env_logger::Env;
 use fred::interfaces::ClientLike;
 use listenfd::ListenFd;
 use regex::Regex;
-use session::ProfileRenderInfo;
 
 mod app_state;
 mod error;
@@ -24,7 +23,6 @@ mod oauth;
 mod partials;
 mod permissions;
 mod routes;
-mod session;
 
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
