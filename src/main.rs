@@ -26,25 +26,6 @@ mod routes;
 
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
-#[derive(Template)]
-#[template(path = "index.html")]
-struct IndexTemplate<'a> {
-    config: &'a AppConfig,
-    current_profile: &'a Option<ProfileRenderInfo>,
-    name: &'a str,
-}
-
-#[get("/")]
-pub async fn index(app_state: web::Data<AppState>, request: HttpRequest) -> impl Responder {
-    log::trace!("Got sid cookie {:?}", request.cookie("sid"));
-    IndexTemplate {
-        config: &app_state.config,
-        current_profile: &None,
-        name: "Alice",
-    }
-    .to_response()
-}
-
 #[actix_web::main]
 async fn main() -> Result<(), sqlx::Error> {
     dotenvy::dotenv().ok();
@@ -112,8 +93,7 @@ async fn main() -> Result<(), sqlx::Error> {
                     // Required when mounted on "/", otherwise all other
                     // handlers are skipped.
                     .skip_handler_when_not_found(),
-            )
-            .service(index);
+            );
         let app = routes::add_routes(app);
         app
     });

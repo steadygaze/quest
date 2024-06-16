@@ -48,11 +48,21 @@ pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
         .service(logout)
 }
 
+/// First character is a letter, username is between 3 and 30 characters long,
+/// and is alphanumeric.
+pub fn valid_username(alphanumeric: &Regex, username: &str) -> bool {
+    username.chars().next().is_some_and(|x| x.is_lowercase())
+        && username.len() >= 3
+        && username.len() < 30
+        && alphanumeric.is_match(username)
+}
+
 /// Temporary endpoint for testing the auth page template.
 #[get("/test")]
-pub async fn test(app_state: web::Data<AppState>) -> impl Responder {
+async fn test(app_state: web::Data<AppState>) -> impl Responder {
     CreateAccountTemplate {
         config: &app_state.config,
+        logged_in: false,
         current_profile: &None,
         email: "test@test.com",
         secret: "mysecret",
@@ -64,14 +74,16 @@ pub async fn test(app_state: web::Data<AppState>) -> impl Responder {
 #[template(path = "auth/login.html")]
 struct LoginTemplate<'a> {
     config: &'a AppConfig,
+    logged_in: bool,
     current_profile: &'a Option<ProfileRenderInfo>,
 }
 
 /// Login options page to present different oauth providers.
 #[get("/")]
-pub async fn login_options(app_state: web::Data<AppState>) -> Result<impl Responder> {
+async fn login_options(app_state: web::Data<AppState>) -> Result<impl Responder> {
     Ok(LoginTemplate {
         config: &app_state.config,
+        logged_in: false,
         current_profile: &None,
     }
     .to_response())
@@ -79,7 +91,7 @@ pub async fn login_options(app_state: web::Data<AppState>) -> Result<impl Respon
 
 /// Start Discord oauth by generating a PKCE challenge and redirecting.
 #[get("/discord/start")]
-pub async fn discord_start(app_state: web::Data<AppState>) -> Result<impl Responder> {
+async fn discord_start(app_state: web::Data<AppState>) -> Result<impl Responder> {
     // Generate a PKCE challenge.
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
@@ -134,13 +146,14 @@ struct DiscordUser {
 #[template(path = "auth/create_account.html")]
 struct CreateAccountTemplate<'a> {
     config: &'a AppConfig,
+    logged_in: bool,
     current_profile: &'a Option<ProfileRenderInfo>,
     email: &'a str,
     secret: &'a str,
 }
 
 #[get("/discord/callback")]
-pub async fn discord_callback(
+async fn discord_callback(
     app_state: web::Data<AppState>,
     params: web::Query<DiscordOauthRedirectParams>,
     request: HttpRequest,
@@ -297,6 +310,7 @@ pub async fn discord_callback(
 
             let mut response = partials::MessagePageTemplate {
                 config: &app_state.config,
+                logged_in: true,
                 current_profile: &None,
                 page_title: &Some("Logged in"),
                 message: format!("You are now logged in as {discord_email}.").as_str(),
@@ -345,6 +359,7 @@ pub async fn discord_callback(
 
     Ok(CreateAccountTemplate {
         config: &app_state.config,
+        logged_in: true,
         current_profile: &None,
         email: discord_email.as_str(),
         secret: new_account_secret.as_str(),
@@ -371,7 +386,7 @@ struct UsernameExistsQuery {
 }
 
 #[get("/profile_exists_already")]
-pub async fn check_if_user_already_exists(
+async fn check_if_user_already_exists(
     app_state: web::Data<AppState>,
     params: web::Query<UsernameExistsQuery>,
 ) -> impl Responder {
@@ -439,17 +454,8 @@ async fn create_session<'a>(
     return Ok(cookie_builder.finish());
 }
 
-/// First character is a letter, username is between 3 and 30 characters long,
-/// and is alphanumeric.
-pub fn valid_username(alphanumeric: &Regex, username: &str) -> bool {
-    username.chars().next().is_some_and(|x| x.is_lowercase())
-        && username.len() >= 3
-        && username.len() < 30
-        && alphanumeric.is_match(username)
-}
-
 #[post("/create_account")]
-pub async fn create_account(
+async fn create_account(
     app_state: web::Data<AppState>,
     form: web::Form<RegisterUserForm>,
     request: HttpRequest,
@@ -529,6 +535,7 @@ pub async fn create_account(
         .context("Failed to create new session after account creation")?;
     let mut response = partials::MessagePageTemplate {
         config: &app_state.config,
+        logged_in: true,
         current_profile: &None,
         page_title: &Some("Logged in"),
         message: "Account created successfully. You are now logged in.",
@@ -541,7 +548,7 @@ pub async fn create_account(
 }
 
 #[post("/cancel_create_account")]
-pub async fn cancel_create_account(
+async fn cancel_create_account(
     app_state: web::Data<AppState>,
     form: web::Form<RegisterUserForm>,
 ) -> Result<impl Responder> {
@@ -554,6 +561,7 @@ pub async fn cancel_create_account(
 
     Ok(partials::MessagePageTemplate {
         config: &app_state.config,
+        logged_in: true,
         current_profile: &None,
         page_title: &Some("Cancelled"),
         message: "Account creation cancelled; your information has been forgotten. If you want to create a new account, start over.",
@@ -562,10 +570,7 @@ pub async fn cancel_create_account(
 }
 
 #[get("/logout")]
-pub async fn logout(
-    app_state: web::Data<AppState>,
-    request: HttpRequest,
-) -> Result<impl Responder> {
+async fn logout(app_state: web::Data<AppState>, request: HttpRequest) -> Result<impl Responder> {
     if let Some(mut session_id) = request.cookie(SESSION_ID_COOKIE) {
         trace!("Logging out session {:?}", session_id);
         app_state
@@ -576,6 +581,7 @@ pub async fn logout(
 
         let mut response = partials::MessagePageTemplate {
             config: &app_state.config,
+            logged_in: true,
             current_profile: &None,
             page_title: &Some("Logged out"),
             message: "You are now logged out. Goodbye.",
@@ -592,6 +598,7 @@ pub async fn logout(
     } else {
         Ok(partials::MessagePageTemplate {
             config: &app_state.config,
+            logged_in: false,
             current_profile: &None,
             page_title: &Some("Logged out"),
             message: "You were already logged out.",

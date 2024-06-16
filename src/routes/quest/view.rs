@@ -15,6 +15,7 @@ struct ListPost {
 #[template(path = "quest/view.html")]
 struct ViewQuestTemplate<'a> {
     config: &'a AppConfig,
+    logged_in: bool,
     current_profile: &'a Option<ProfileRenderInfo>,
     title: &'a String,
     posts: &'a Vec<ListPost>,
@@ -51,6 +52,7 @@ async fn view_quest(
 
     Ok(ViewQuestTemplate {
         config: &app_state.config,
+        logged_in: session_info.is_some(),
         current_profile: &session_info.and_then(|session_info| session_info.current_profile),
         title: &"Placeholder".to_string(),
         posts: &posts,

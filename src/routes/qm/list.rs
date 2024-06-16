@@ -17,6 +17,7 @@ struct ListQuest {
 #[template(path = "qm/list.html")]
 struct ListQuestTemplate<'a> {
     config: &'a AppConfig,
+    logged_in: bool,
     current_profile: &'a Option<ProfileRenderInfo>,
     quests: &'a Vec<ListQuest>,
 }
@@ -47,6 +48,7 @@ async fn list_quests(
 
     Ok(ListQuestTemplate {
         config: &app_state.config,
+        logged_in: true,
         current_profile: &current_profile,
         quests: &quests,
     }

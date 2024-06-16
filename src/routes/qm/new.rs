@@ -15,6 +15,7 @@ pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
 #[template(path = "qm/new.html")]
 struct NewQuestTemplate<'a> {
     config: &'a AppConfig,
+    logged_in: bool,
     current_profile: &'a Option<ProfileRenderInfo>,
 }
 
@@ -32,6 +33,7 @@ async fn create_new_quest_form(
 
     Ok(NewQuestTemplate {
         config: &app_state.config,
+        logged_in: true,
         current_profile: &current_profile,
     }
     .to_response())

@@ -14,6 +14,7 @@ pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
 #[template(path = "auth/choose_profile.html")]
 struct ChooseProfileTemplate<'a> {
     config: &'a AppConfig,
+    logged_in: bool,
     current_profile: &'a Option<ProfileRenderInfo>,
     profiles: &'a Vec<(String, String)>,
 }
@@ -44,6 +45,7 @@ pub async fn choose_profile_form(
 
     Ok(ChooseProfileTemplate {
         config: &app_state.config,
+        logged_in: true,
         current_profile: &current_profile,
         profiles: &profiles,
     }
@@ -81,6 +83,7 @@ pub async fn choose_profile_submit(
         }
         return Ok(MessagePageTemplate {
             config: &app_state.config,
+            logged_in: true,
             current_profile: &current_profile,
             page_title: &Some("Set profile"),
             message: "Cleared the active profile. Now in reader mode.",
@@ -122,6 +125,7 @@ pub async fn choose_profile_submit(
                 .context("Failed to set session profile info")?;
             Ok(MessagePageTemplate {
                 config: &app_state.config,
+                logged_in: true,
                 current_profile: &current_profile,
                 page_title: &Some("Set profile"),
                 message: format!("Profile set to @{}.", form.profile).as_str(),

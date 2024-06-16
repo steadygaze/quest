@@ -19,6 +19,7 @@ pub struct FailureTemplate<'a> {
 #[template(path = "message_page.html")]
 pub struct MessagePageTemplate<'a> {
     pub config: &'a AppConfig,
+    pub logged_in: bool,
     pub current_profile: &'a Option<ProfileRenderInfo>,
     pub page_title: &'a Option<&'a str>,
     pub message: &'a str,

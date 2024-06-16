@@ -1,4 +1,5 @@
 mod auth;
+mod home;
 mod prelude;
 mod qm;
 mod quest;
@@ -12,6 +13,7 @@ where
     T: ServiceFactory<ServiceRequest, Config = (), Error = actix_web::Error, InitError = ()>,
 {
     app.service(auth::add_routes(web::scope("/auth")))
+        .service(home::add_routes(web::scope("")))
         .service(qm::add_routes(web::scope("/qm")))
         .service(quest::add_routes(web::scope("/@{username}")))
 }

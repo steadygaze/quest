@@ -78,6 +78,7 @@ impl AppState {
         session_id.len() == 32 && self.regex.alphanumeric.is_match(session_id)
     }
 
+    /// Private helper for getting a specific session.
     async fn get_session_for(&self, session_id: &str) -> Result<SessionInfo> {
         if !self.valid_session_id(session_id) {
             return Err(Error::AuthenticationError(

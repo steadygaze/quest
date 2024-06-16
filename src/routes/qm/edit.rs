@@ -8,6 +8,7 @@ pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
 #[template(path = "qm/edit.html")]
 struct EditQuestTemplate<'a> {
     config: &'a AppConfig,
+    logged_in: bool,
     current_profile: &'a Option<ProfileRenderInfo>,
     title: &'a String,
     slug: &'a String,
@@ -42,6 +43,7 @@ async fn edit_quest(
 
     Ok(EditQuestTemplate {
         config: &app_state.config,
+        logged_in: true,
         current_profile: &current_profile,
         title: &title,
         slug: &slug,
