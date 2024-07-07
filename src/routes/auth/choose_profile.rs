@@ -72,7 +72,7 @@ pub async fn choose_profile_submit(
 
     if form.profile == "@" {
         if current_profile.is_some() {
-            app_state
+            let _: () = app_state
                 .redis_pool
                 .hdel(
                     key::session(session_id.as_str()),
@@ -112,7 +112,7 @@ pub async fn choose_profile_submit(
         // E.g. if the user tries to log in as a profile they don't own.
         None => Err(Error::AppError("Bad username".to_string())),
         Some((display_name,)) => {
-            app_state
+            let _: () = app_state
                 .redis_pool
                 .hset(
                     key::session(session_id.as_str()),

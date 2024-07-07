@@ -19,6 +19,7 @@ use regex::Regex;
 mod app_state;
 mod error;
 mod key;
+mod markup;
 mod oauth;
 mod partials;
 mod permissions;

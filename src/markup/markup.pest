@@ -1,0 +1,71 @@
+/// A full document.
+document = { SOI ~ (horizontal_rule | blockquote | unordered_list | ordered_list | paragraph)* ~ EOI }
+
+/// Horizontal rule, made of at least three hyphens.
+horizontal_rule = { (!"-"{3} ~ "-" | " " | "\t")* ~ "-"{3} ~ (" " | "\t" | "-")* ~ end }
+
+/// A blockquote, potentially including nested blockquotes of varying depth.
+blockquote       =  { blockquote_level+ ~ block_end }
+blockquote_level =  { line_whitespace? ~ PUSH(blockquote_depth) ~ inline_whitespace? ~ blockquote_line? ~ (blockquote_blank | blockquote_cont)* ~ DROP }
+blockquote_cont  = _{ line_whitespace? ~ PEEK ~ !">" ~ inline_whitespace? ~ blockquote_line? }
+blockquote_blank =  { (line_whitespace? ~ PEEK ~ !">" ~ inline_whitespace? ~ end)+ }
+blockquote_depth =  { ">"+ }
+blockquote_line  =  { inline }
+// TODO - Other structures nested in blockquotes.
+
+/// An undordered list, potentially including nested unordered lists.
+unordered_list = { nonindent_whitespace? ~ PUSH(list_depth) ~ ul_bullet ~ list_item ~ (ul_cont | ul_nested | ol_nested)* ~ DROP ~ block_end }
+ordered_list   = { nonindent_whitespace? ~ PUSH(list_depth) ~ ol_num ~ list_item ~ (ol_cont | ol_nested | ul_nested)* ~ DROP ~ block_end }
+
+ul_nested =  { PUSH(list_depth) ~ ul_bullet ~ list_item ~ ul_cont* ~ DROP }
+ul_cont   = _{ PEEK ~ !(" " | "\t") ~ ul_bullet ~ list_item }
+ul_bullet = _{ "-" }
+
+ol_nested =  { PUSH(list_depth) ~ ol_num ~ list_item ~ ol_cont* ~ DROP }
+ol_cont   = _{ PEEK ~ !(" " | "\t") ~ ol_num ~ list_item }
+ol_num    = _{ ASCII_DIGIT+ ~ "." }
+
+list_item  =  { list_line+ }
+list_line  =  { inline_whitespace? ~ !(ol_num | ul_bullet) ~ inline }
+list_depth = _{ (" " | "\t")* }
+
+/// A paragraph, consisting of multiple lines grouped together.
+paragraph      = { line_whitespace? ~ paragraph_line+ ~ block_end }
+paragraph_line = { inline_whitespace? ~ inline }
+
+/// Text and formatting which may occur in a single line.
+inline = _{ (formatted | text | text_control)+ ~ end }
+
+/// A run of formatted text.
+formatted = { PUSH(control) ~ intext1 ~ POP }
+
+// Nested formatting. Must have one level per format type plus one.
+intext1    = _{ (!PEEK ~ (formatted2 | text | text_control))+ }
+formatted2 =  { PUSH(control) ~ intext2 ~ POP }
+intext2    = _{ (!(PEEK | PEEK[1..2]) ~ (formatted3 | text | text_control))+ }
+formatted3 =  { PUSH(control) ~ intext3 ~ POP }
+intext3    = _{ (!(PEEK | PEEK[1..2] | PEEK[2..3]) ~ (formatted4 | text | text_control))+ }
+formatted4 =  { PUSH(control) ~ intext4 ~ POP }
+intext4    = _{ (!(PEEK | PEEK[1..2] | PEEK[2..3] | PEEK[3..4]) ~ (formatted5 | text | text_control))+ }
+formatted5 =  { PUSH(control) ~ intext5 ~ POP }
+intext5    = _{ (!(PEEK | PEEK[1..2] | PEEK[2..3] | PEEK[3..4] | PEEK[4..5]) ~ (formatted6 | text | text_control))+ }
+formatted6 =  { PUSH(control) ~ text ~ POP }
+
+/// Control/formatting range characters.
+control = { "**" | "//" | "__" | "~~" | "||" }
+
+/// A literal control/formatting range character.
+text_control = { "**" | "//" | "__" | "~~" | "||" }
+
+/// A run of normal text.
+text = { ("\\" ~ ANY | !(control | "\n") ~ ANY)+ }
+
+/// Characters that can end a line.
+end = _{ "\n" | EOI }
+
+/// Characters that can end a paragraph/block.
+block_end = _{ "\n"+ | EOI }
+
+line_whitespace      = _{ (" " | "\t" | "\n")+ }
+nonindent_whitespace = _{ ((" " | "\t")* ~ "\n")+ }
+inline_whitespace    = _{ (" " | "\t")+ }
