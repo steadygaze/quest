@@ -24,8 +24,24 @@
           id="body"
           placeholder="Body"
           rows="10"
-          class="w-full"
+          class="w-full font-mono"
+          x-data="{ body: '' }"
+          x-bind="body"
+          x-init="window.onbeforeunload = (event) => this.body && this.body.length >= 5"
         ></textarea>
+        <button
+          class="bg-slate-200 px-2 py-0.5 font-bold hover:bg-slate-400"
+          hx-post="/markup/preview"
+          hx-trigger="click"
+          hx-target="#preview-area"
+          hx-params="body"
+        >
+          Preview
+        </button>
+      </div>
+      <div class="pb-2">
+        <h2>Preview:</h2>
+        <div id="preview-area"></div>
       </div>
     </fieldset>
     <div class="border-t-2 py-2">
