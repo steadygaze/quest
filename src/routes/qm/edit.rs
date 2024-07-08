@@ -1,4 +1,5 @@
 use crate::routes::prelude::*;
+use crate::{markup, partials};
 
 pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
     scope.service(edit_quest).service(edit_quest_submit)
@@ -51,6 +52,16 @@ async fn edit_quest(
     .to_response())
 }
 
+#[derive(Template)]
+#[template(path = "qm/markup_error.html")]
+struct MarkupErrorTemplate<'a> {
+    config: &'a AppConfig,
+    logged_in: bool,
+    current_profile: &'a Option<ProfileRenderInfo>,
+    error: &'a str,
+    raw: &'a str,
+}
+
 #[derive(Deserialize)]
 struct NewQuestPostForm {
     title: String,
@@ -71,6 +82,21 @@ async fn edit_quest_submit(
         ..
     } = app_state.require_session(request).await?;
     // TODO - Must be the QM of this quest.
+
+    let html = match markup::to_html(form.body.as_str()) {
+        Ok(html) => html,
+        Err(err) => {
+            let error_text = format!("{}", err);
+            return Ok(MarkupErrorTemplate {
+                config: &app_state.config,
+                logged_in: true,
+                current_profile: &current_profile,
+                error: error_text.as_str(),
+                raw: &form.body,
+            }
+            .to_response());
+        }
+    };
 
     let mut transaction = app_state
         .db_pool
@@ -93,19 +119,27 @@ async fn edit_quest_submit(
 
     sqlx::query(
         r#"
-        insert into quest_post (id, quest, title, body)
-        values ($1, $2, $3, $4)
+        insert into quest_post (id, quest, title, body_markup, body_html)
+        values ($1, $2, $3, $4, $5)
         "#,
     )
     .bind(Uuid::now_v6(&app_state.uuid_seed))
     .bind(quest_id)
     .bind(&form.title)
     .bind(&form.body)
+    .bind(&html)
     .execute(&mut *transaction)
     .await
     .context("Failed to post update")?;
 
     transaction.commit().await.context("Failed to commit")?;
 
-    Ok("update posted successfully")
+    Ok(partials::MessagePageTemplate {
+        config: &app_state.config,
+        logged_in: true,
+        current_profile: &current_profile,
+        page_title: &Some("Update successful"),
+        message: "Update posted successfully.",
+    }
+    .to_response())
 }

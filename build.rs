@@ -52,10 +52,12 @@ fn main() -> Result<(), env::VarError> {
             .to_str()
             .expect("failed to generate output path"),
     ]);
-    let output = command.output().expect("failed to run tailwind");
+    let output = command.output().expect(
+        "failed to run tailwind; try rerunning with `npm run build` to see the exact error",
+    );
     assert!(
         output.status.success(),
-        "failed to run tailwindcss (status nonzero)"
+        "failed to run tailwindcss (status nonzero); try rerunning with `npm run build` to see the exact error"
     );
 
     resource_dir("./static")

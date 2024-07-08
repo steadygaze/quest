@@ -89,6 +89,16 @@ async fn check_existing_slug(
     }
 }
 
+#[derive(Template)]
+#[template(path = "qm/created.html")]
+struct CreatedNewQuestTemplate<'a> {
+    config: &'a AppConfig,
+    logged_in: bool,
+    current_profile: &'a Option<ProfileRenderInfo>,
+    title: &'a str,
+    slug: &'a str,
+}
+
 #[derive(Deserialize)]
 struct NewQuestForm {
     title: String,
@@ -150,6 +160,13 @@ async fn create_new_quest_submit(
     .context("Failed to insert new quest")?;
 
     transaction.commit().await.context("Failed to commit")?;
-    Ok(HttpResponse::Ok().body("created new quest"))
+    Ok(CreatedNewQuestTemplate {
+        config: &app_state.config,
+        logged_in: true,
+        current_profile: &current_profile,
+        title: &form.title,
+        slug: &form.slug,
+    }
+    .to_response())
     // TODO - Redirect to new quest editing view.
 }

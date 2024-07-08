@@ -1,3 +1,20 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+  /* We don't want to include tailwindcss in the html generated from markup
+   * itself, because we would have to regenerate it every time we wanted to
+   * change the styles. */
+  .marked-up {
+    blockquote {
+      @apply border-l-2 border-slate-300 pl-2;
+    }
+    ol {
+      @apply ml-6 list-decimal;
+    }
+    ul {
+      @apply ml-6 list-disc;
+    }
+  }
+}

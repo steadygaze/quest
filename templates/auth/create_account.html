@@ -21,7 +21,7 @@
           value="{{ email }}"
           class="border-2 border-slate-100"
           required
-          maxlength="1000"
+          maxlength="254"
           disabled
           {# User can't change their email because it's the one they oauth'd with. Also, the server remembers the email, so we don't have to bother including it in the form submission. #}
         />
@@ -129,7 +129,7 @@
           placeholder="Username"
           required
           minlength="3"
-          maxlength="30"
+          maxlength="20"
           pattern="[a-z][a-z0-9]*"
           x-model="username"
           x-bind:disabled="!createProfile"

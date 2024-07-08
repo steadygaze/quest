@@ -1,13 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
   <h1 class="mb-1 text-2xl font-bold">{{ title }}</h1>
-  <ul>
-    {% for post in posts %}
-      <p>{{ post.title }}</p>
-      <pre>{{ post.body }}</pre>
-      {% if !loop.last %}
-        <hr />
-      {% endif %}
-    {% endfor %}
-  </ul>
+  {% for post in posts %}
+    <article class="my-4 bg-slate-100">
+      <h1 class="text-xl font-bold">{{ post.title }}</h1>
+      <div class="marked-up">{{ post.body_html|safe }}</div>
+    </article>
+  {% endfor %}
 {% endblock content %}

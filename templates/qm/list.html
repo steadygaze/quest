@@ -1,14 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
   <h1 class="mb-1 text-2xl font-bold">Your quests</h1>
-  <p><a href="/qm/new">Create a new quest</a></p>
-  <ul>
-    {% for quest in quests %}
-      <li>
-        <a href="/qm/edit/{{ quest.slug }}"
-          >{{ quest.title }} | <code>{{ quest.slug }}</code></a
-        >
-      </li>
-    {% endfor %}
-  </ul>
+  <button class="bg-green-200 px-2 py-0.5 font-bold hover:bg-green-400">
+    <a href="/qm/new">Create a new quest</a>
+  </button>
+  {% if quests.len() <= 0 %}
+    <p><em>(you have no quests under this profile)</em></p>
+  {% else %}
+    <ul>
+      {% for quest in quests %}
+        <li>
+          <a href="/qm/edit/{{ quest.slug }}"
+            >{{ quest.title }} | <code>{{ quest.slug }}</code></a
+          >
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
 {% endblock content %}

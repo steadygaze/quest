@@ -20,8 +20,8 @@ struct PreviewForm {
 }
 
 #[post("/preview")]
-pub async fn preview(preview_form: web::Form<PreviewForm>) -> impl Responder {
-    match markup::to_html(preview_form.body.as_str()) {
+pub async fn preview(form: web::Form<PreviewForm>) -> impl Responder {
+    match markup::to_html(form.body.as_str()) {
         Ok(html) => html,
         Err(err) => PreTemplate {
             pre_text: format!("{}", err).as_str(),

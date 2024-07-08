@@ -11,8 +11,10 @@ mod pretty_debug;
 #[grammar = "markup/markup.pest"]
 pub struct MarkupParser;
 
-type ParseError = pest::error::Error<Rule>;
-type ParseResult = Result<String, ParseError>;
+/// Convenience type for parsing errors.
+pub type ParseError = pest::error::Error<Rule>;
+/// Convenience type for the result of parsing.
+pub type ParseResult = Result<String, ParseError>;
 
 enum TraversalState<'a> {
     Prequeued(Pairs<'a, Rule>),
@@ -23,8 +25,17 @@ enum TraversalState<'a> {
     OutputStr(&'a str),
 }
 
+/// Return an HTML representation of the given markup.
 pub fn to_html(markup: &str) -> ParseResult {
     Ok(parsed_to_html(MarkupParser::parse(Rule::document, markup)?))
+}
+
+/// Return an debugging representation of the given markup.
+pub fn to_debug(markup: &str) -> String {
+    match MarkupParser::parse(Rule::document, markup) {
+        Ok(pairs) => pretty_debug::stack_based(pairs),
+        Err(err) => format!("{}", err),
+    }
 }
 
 fn parsed_to_html(pairs: Pairs<Rule>) -> String {
@@ -329,6 +340,17 @@ continued</blockquote>"#,
         }
 
         #[test]
+        #[ignore]
+        fn multi_paragraph() -> TestResult {
+            assert_html!(
+                r#"> hello
+>
+> continued"#,
+                r#"<blockquote><p>hello</p><p>continued</p></blockquote>"#,
+            )
+        }
+
+        #[test]
         fn basic_nesting() -> TestResult {
             assert_html!(
                 r#"> hello
@@ -455,6 +477,19 @@ continued<blockquote>nested</blockquote>return to original level</blockquote>"#,
 1. how
 1. are
 1. you
+"#,
+                "<ol><li>hello</li><li>world</li><li>how</li><li>are</li><li>you</li></ol>",
+            )
+        }
+
+        #[test]
+        fn basic_ol_numbered() -> TestResult {
+            assert_html!(
+                r#"1. hello
+2. world
+3. how
+4. are
+5. you
 "#,
                 "<ol><li>hello</li><li>world</li><li>how</li><li>are</li><li>you</li></ol>",
             )

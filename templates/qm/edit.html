@@ -24,7 +24,7 @@
           id="body"
           placeholder="Body"
           rows="10"
-          class="w-full font-mono"
+          class="w-full border-2 border-slate-100 font-mono"
           x-data="{ body: '' }"
           x-bind="body"
           x-init="window.onbeforeunload = (event) => this.body && this.body.length >= 5"
@@ -41,7 +41,9 @@
       </div>
       <div class="pb-2">
         <h2>Preview:</h2>
-        <div id="preview-area"></div>
+        <div id="preview-area" class="marked-up bg-slate-100">
+          <em>(click the "Preview" button to show a preview of the markup)</em>
+        </div>
       </div>
     </fieldset>
     <div class="border-t-2 py-2">
@@ -49,6 +51,7 @@
         class="bg-green-200 px-2 py-0.5 font-bold hover:bg-green-400"
         type="submit"
         value="Post update"
+        onclick="window.onbeforeunload = null"
       />
     </div>
   </form>

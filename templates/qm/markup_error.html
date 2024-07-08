@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1 class="mb-1 text-2xl font-bold">Markup error</h1>
+  <p>There was an error in the submitted markup. The error was:</p>
+  <pre><code>{{ error }}</code></pre>
+  <p>
+    Try
+    <a
+      class="m-1 font-bold underline decoration-dashed hover:decoration-solid"
+      href="javascript:history.back()"
+      >going back</a
+    >
+    and resubmitting after fixing the error. You can use the Preview function to
+    make sure the markup is correct.
+  </p>
+  <pre><code>{{ raw }}</code></pre>
+{% endblock content %}

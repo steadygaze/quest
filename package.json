@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "build": "tailwindcss -i tailwind_input.css -o tailwind_output.css --minify",
+    "build": "tailwindcss -i input.css -o static/css/output.css --minify",
     "format": "prettier --write --ignore-unknown .",
     "formatcheck": "prettier --check --ignore-unknown ."
   },

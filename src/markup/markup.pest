@@ -58,14 +58,18 @@ control = { "**" | "//" | "__" | "~~" | "||" }
 text_control = { "**" | "//" | "__" | "~~" | "||" }
 
 /// A run of normal text.
-text = { ("\\" ~ ANY | !(control | "\n") ~ ANY)+ }
+text = { ("\\" ~ ANY | !(control | newline) ~ ANY)+ }
 
 /// Characters that can end a line.
-end = _{ "\n" | EOI }
+end = _{ newline | EOI }
 
 /// Characters that can end a paragraph/block.
-block_end = _{ "\n"+ | EOI }
+block_end = _{ newline+ | EOI }
 
-line_whitespace      = _{ (" " | "\t" | "\n")+ }
-nonindent_whitespace = _{ ((" " | "\t")* ~ "\n")+ }
+line_whitespace      = _{ (" " | "\t" | newline)+ }
+nonindent_whitespace = _{ ((" " | "\t")* ~ newline)+ }
 inline_whitespace    = _{ (" " | "\t")+ }
+
+/// A newline (any of CR LF, LF, CR). We must accept CR LF because it's what
+/// HTML forms normalize to.
+newline = _{ "\r\n" | "\n" | "\r" }

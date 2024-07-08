@@ -2,7 +2,8 @@
 -- We include triggers for checking the allowed lengths of some fields, but
 -- this would be incompatible with allowing per-instance configurable lengths.
 
-create domain email as text
+-- 254 characters is the maximum length of an email address per the spec.
+create domain email as varchar(254)
   check ( value ~ '^[a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$' );
 
 -- Should permissions be per-account or per-profile?
@@ -20,15 +21,15 @@ comment on column account.email is 'Primary email.';
 comment on column account.secondary_email is 'Secondary emails.';
 comment on column account.created_at is 'Created at timestamp.';
 
-create domain username as text
+create domain username as varchar(20)
   check ( value ~ '^[a-z0-9]+$' and substring(value, 1, 1) ~ '[a-z]' );
 
 create table profile (
   id uuid primary key default gen_random_uuid(),
-  username username unique not null constraint username_not_too_long check (length(username) < 30 and length(username) >= 3),
+  username username unique not null constraint username_not_too_long check (length(username) >= 3),
   account_id uuid references account,
-  display_name text constraint display_name_not_too_long check (length(display_name) < 30),
-  bio text constraint bio_not_too_long check (length(bio) < 500)
+  display_name varchar(30),
+  bio varchar(500)
 );
 
 comment on table profile is 'User profile, for non-lurker users.';
@@ -52,15 +53,15 @@ create type quest_publish_state as enum (
   'complete'
 );
 
-create domain url_part as text check ( value ~ '^[a-z0-9]+$' );
+create domain url_part as varchar(30) check ( value ~ '^[a-z0-9]+$' );
 
 -- A quest.
 create table quest (
   id uuid primary key,
-  title text not null check (length(title) < 250),
-  slug url_part unique not null check (length(slug) < 30),
-  short_description text check (length(short_description) <= 250),
-  long_description text check (length(long_description) <= 5000),
+  title varchar(250) not null,
+  slug url_part unique not null,
+  short_description varchar(250),
+  long_description varchar(5000),
   questmaster uuid references account not null,
   publish_state quest_publish_state default 'prepping'::quest_publish_state not null,
   created_at timestamptz not null default current_timestamp,
@@ -113,17 +114,12 @@ create type quest_post_state as enum (
 -- Assumption: one questmaster.
 create table quest_post (
   id uuid primary key,
-  -- What quest the post is under.
   quest uuid references quest not null,
-  -- Title of the post.
   title text,
-  -- Actual text of the post.
-  body text not null constraint not_empty check (body <> ''),
-  -- When the post was created.
+  body_markup text not null constraint not_empty check (body_markup <> ''),
+  body_html text not null,
   created_at timestamptz not null default current_timestamp,
-  -- Whether it's been published. Null if unpublished.
   published_at timestamptz null,
-  -- What state the post is in.
   state quest_post_state default 'draft'
 );
 
@@ -131,7 +127,8 @@ comment on table quest_post is 'A post on a quest, created by the questmaster.';
 comment on column quest_post.id is 'Post ID';
 comment on column quest_post.quest is 'What quest the post is under.';
 comment on column quest_post.title is 'Title of the post.';
-comment on column quest_post.body is 'Actual text of the post.';
+comment on column quest_post.body_markup is 'Actual text of the post in markup form.';
+comment on column quest_post.body_html is 'Actual text of the post converted to HTML.';
 comment on column quest_post.created_at is 'When the post was created.';
 comment on column quest_post.published_at is 'Whether it has been published. Null if unpublished.';
 comment on column quest_post.state is 'What state the post is in.';

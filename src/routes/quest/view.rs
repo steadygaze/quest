@@ -8,7 +8,7 @@ pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
 #[derive(sqlx::FromRow, Debug, PartialEq, Eq)]
 struct ListPost {
     title: String,
-    body: String,
+    body_html: String,
 }
 
 #[derive(Template)]
@@ -36,7 +36,7 @@ async fn view_quest(
 
     let posts: Vec<ListPost> = sqlx::query_as(
         r#"
-        select quest_post.title, quest_post.body
+        select quest_post.title, quest_post.body_html
         from quest
           join profile on questmaster = account_id
           join quest_post on quest.id = quest_post.quest
