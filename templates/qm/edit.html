@@ -25,9 +25,7 @@
           placeholder="Body"
           rows="10"
           class="w-full border-2 border-slate-100 font-mono"
-          x-data="{ body: '' }"
-          x-bind="body"
-          x-init="window.onbeforeunload = (event) => this.body && this.body.length >= 5"
+          x-init="window.onbeforeunload = (event) => { if (this.body.value.length >= 5) event.preventDefault(); }"
         ></textarea>
         <button
           class="bg-slate-200 px-2 py-0.5 font-bold hover:bg-slate-400"
