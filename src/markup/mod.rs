@@ -114,7 +114,7 @@ fn parsed_to_html(pairs: Pairs<Rule>) -> String {
                         }
                         "||" => {
                             // Placeholder.
-                            html.push_str("<span>");
+                            html.push_str("<span class=\"spoiler\">");
                             format_stack.push("</span>");
                         }
                         str => {
@@ -225,12 +225,15 @@ mod tests {
 
         #[test]
         fn spoiler_basic() -> TestResult {
-            assert_html!("||spoiler||", "<p><span>spoiler</span></p>")
+            assert_html!(
+                "||spoiler||",
+                "<p><span class=\"spoiler\">spoiler</span></p>"
+            )
         }
 
         #[test]
         fn max_nested() -> TestResult {
-            assert_html!("**bold //italic __underline ~~strikethrough~~ ||spoiler text spoiler|| ~~strikethrough~~ underline__ italic// bold**", "<p><strong>bold <em>italic <ins>underline <del>strikethrough</del> <span>spoiler text spoiler</span> <del>strikethrough</del> underline</ins> italic</em> bold</strong></p>")
+            assert_html!("**bold //italic __underline ~~strikethrough~~ ||spoiler text spoiler|| ~~strikethrough~~ underline__ italic// bold**", "<p><strong>bold <em>italic <ins>underline <del>strikethrough</del> <span class=\"spoiler\">spoiler text spoiler</span> <del>strikethrough</del> underline</ins> italic</em> bold</strong></p>")
         }
 
         #[test]

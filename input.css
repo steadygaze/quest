@@ -16,5 +16,12 @@
     ul {
       @apply ml-6 list-disc;
     }
+    .spoiler {
+      @apply bg-black text-black;
+    }
+    .spoiler:active,
+    .spoiler:hover {
+      @apply bg-inherit text-black;
+    }
   }
 }
