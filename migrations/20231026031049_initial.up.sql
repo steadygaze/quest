@@ -1,12 +1,11 @@
 -- TODO - Consider using citext again.
--- We include triggers for checking the allowed lengths of some fields, but
--- this would be incompatible with allowing per-instance configurable lengths.
+
+create schema partman;
+create extension pg_partman schema partman;
 
 -- 254 characters is the maximum length of an email address per the spec.
 create domain email as varchar(254)
   check ( value ~ '^[a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$' );
-
--- Should permissions be per-account or per-profile?
 
 create table account (
   id uuid primary key default gen_random_uuid(),
@@ -132,6 +131,51 @@ comment on column quest_post.body_html is 'Actual text of the post converted to 
 comment on column quest_post.created_at is 'When the post was created.';
 comment on column quest_post.published_at is 'Whether it has been published. Null if unpublished.';
 comment on column quest_post.state is 'What state the post is in.';
+
+create table account_settings (
+  account uuid primary key not null references account,
+  ask_for_profile_on_login boolean,
+  default_profile uuid references profile
+);
+
+comment on table account_settings is 'Per-account settings';
+comment on column account_settings.account is 'Account that this row is for.';
+comment on column account_settings.ask_for_profile_on_login is 'Ask for what profile to log in as every login.';
+comment on column account_settings.default_profile is 'Default profile. Nullable.';
+
+create table username_tombstone (
+    username username not null,
+    account uuid not null,
+    deleted_at timestamptz not null default now()
+) partition by range (deleted_at);
+
+-- Insertion of old data may go into the DEFAULT partition, which isn't subject
+-- to partman's retention policy, until `select
+-- partman.partition_data_time('public.username_tombstone');` is run. This may
+-- result in it living forever.
+
+-- TODO: create a trigger to keep out old data.
+
+comment on table username_tombstone is 'Tombstones used to prevent usage of usernames that were recently changed.';
+comment on column username_tombstone.username is 'Username that is tombstoned.';
+comment on column username_tombstone.account is 'Prior account the username was associated with.';
+comment on column username_tombstone.deleted_at is 'Timestamp at deletion time';
+
+create table username_tombstone_table_template (like username_tombstone);
+alter table username_tombstone_table_template add primary key (username);
+create index on username_tombstone (account);
+
+select partman.create_parent(
+    p_parent_table := 'public.username_tombstone',
+    p_control := 'deleted_at',
+    p_interval := '1 day',
+    p_template_table := 'public.username_tombstone_table_template',
+    p_type := 'native'
+);
+
+update partman.part_config
+set retention_keep_table = false, retention = '30 days'
+where parent_table = 'public.username_tombstone';
 
 -- Whether a quest post is still accepting comments.
 create type quest_comment_type as enum (
