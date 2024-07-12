@@ -112,7 +112,6 @@
           maxlength="30"
           x-model="displayName"
           x-bind:disabled="!createProfile"
-          x-on:keyup="if (!usernameDirty) {username = usernameify(displayName);}"
           class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
         />
         <p>
@@ -133,6 +132,7 @@
           pattern="[a-z][a-z0-9]*"
           x-model="username"
           x-bind:disabled="!createProfile"
+          x-init="$watch('displayName', () => { if (!usernameDirty) { username = usernameify(displayName); } })"
           x-on:keyup="usernameDirty = username !== '' && username !== usernameify(displayName)"
           hx-get="/auth/profile_exists_already"
           hx-trigger="keyup changed delay:1s from:#display-name, keyup changed delay:1s"

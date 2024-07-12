@@ -359,7 +359,7 @@ async fn discord_callback(
 
     Ok(CreateAccountTemplate {
         config: &app_state.config,
-        logged_in: true,
+        logged_in: false,
         current_profile: &None,
         email: discord_email.as_str(),
         secret: new_account_secret.as_str(),
@@ -581,7 +581,7 @@ async fn logout(app_state: web::Data<AppState>, request: HttpRequest) -> Result<
 
         let mut response = partials::MessagePageTemplate {
             config: &app_state.config,
-            logged_in: true,
+            logged_in: false,
             current_profile: &None,
             page_title: &Some("Logged out"),
             message: "You are now logged out. Goodbye.",
