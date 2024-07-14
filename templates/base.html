@@ -6,6 +6,7 @@
     <script src="https://unpkg.com/htmx.org@1.9" defer></script>
     <script src="https://unpkg.com/alpinejs@3" defer></script>
     <script src="/js/defer.js" defer></script>
+    <style>[x-cloak] { display: none !important; }</style>{# https://alpinejs.dev/directives/cloak #}
   </head>
   <body class="bg-slate-300">
     <div class="container mx-auto">
@@ -26,6 +27,7 @@
               />
               <li class="hover:bg-slate-200">Following</li>
               <li class="hover:bg-slate-200"><a href="/qm/">My quests</a></li>
+              <li class="hover:bg-slate-200"><a href="/settings/">Settings</a></li>
             </ul>
           </nav>
         </div>
@@ -40,7 +42,8 @@
           <nav
             class="min-w-32 border-4 border-slate-500 bg-slate-50 p-2 [border-style:ridge] lg:fixed lg:top-4 lg:mr-2"
           >
-            {% if let Some(current_profile) = current_profile %}{# TODO - Fix width of sidebar/name #}
+            {% if let Some(current_profile) = current_profile %}
+              {# TODO - Fix width of sidebar/name #}
               <h1 class="text-2xl">{{ current_profile.display_name }}</h1>
               <h2 class="text-l mb-1">@{{ current_profile.username }}</h2>
             {% else if logged_in %}
@@ -53,7 +56,9 @@
                 {% if current_profile.is_some() %}
                   <li class="hover:bg-slate-200">Profile</li>
                 {% endif %}
-                <li class="hover:bg-slate-200"><a href="/auth/choose_profile">Change profile</a></li>
+                <li class="hover:bg-slate-200">
+                  <a href="/auth/choose_profile">Change profile</a>
+                </li>
                 <li class="hover:bg-slate-200">Notifications</li>
                 <li class="hover:bg-slate-200">
                   <a href="/auth/logout">Logout</a>

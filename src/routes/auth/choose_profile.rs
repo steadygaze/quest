@@ -12,11 +12,29 @@ pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
 
 #[derive(Template)]
 #[template(path = "auth/choose_profile.html")]
-struct ChooseProfileTemplate<'a> {
-    config: &'a AppConfig,
-    logged_in: bool,
-    current_profile: &'a Option<ProfileRenderInfo>,
-    profiles: &'a Vec<(String, String)>,
+pub struct ChooseProfileTemplate<'a> {
+    pub config: &'a AppConfig,
+    pub logged_in: bool,
+    pub current_profile: &'a Option<ProfileRenderInfo>,
+    pub profiles: &'a Vec<(String, String)>,
+}
+
+pub async fn get_profiles(
+    db_pool: &sqlx::postgres::PgPool,
+    account_id: Uuid,
+) -> Result<Vec<(String, String)>> {
+    Ok(sqlx::query_as(
+        r#"
+        select username, display_name
+        from profile
+        where account_id = $1
+        order by display_name asc
+        "#,
+    )
+    .bind(account_id)
+    .fetch_all(db_pool)
+    .await
+    .context("Failed to get profiles")?)
 }
 
 #[get("/choose_profile")]
@@ -30,18 +48,7 @@ pub async fn choose_profile_form(
         ..
     } = app_state.require_session(request).await?;
 
-    let profiles: Vec<(String, String)> = sqlx::query_as(
-        r#"
-        select username, display_name
-        from profile
-        where account_id = $1
-        order by display_name asc
-        "#,
-    )
-    .bind(account_id)
-    .fetch_all(&app_state.db_pool)
-    .await
-    .context("Failed to get profiles")?;
+    let profiles: Vec<(String, String)> = get_profiles(&app_state.db_pool, account_id).await?;
 
     Ok(ChooseProfileTemplate {
         config: &app_state.config,

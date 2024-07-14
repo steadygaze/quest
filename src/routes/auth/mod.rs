@@ -285,11 +285,19 @@ async fn discord_callback(
         .context("Failed to decode response from Discord API")?
         .email;
 
-    match sqlx::query_as::<_, (Uuid,)>(
+    match sqlx::query_as::<_, (Uuid, bool, Option<String>, Option<String>)>(
         r#"
-        select id
-        from account
-        where email = $1
+        select
+          account.id,
+          ask_for_profile_on_login,
+          profile.username,
+          profile.display_name
+        from
+          account
+          left join profile on account.default_profile = profile.id
+        where
+          email = $1
+          or $1 = any(secondary_email)
         limit 1
         "#,
     )
@@ -298,24 +306,45 @@ async fn discord_callback(
     .await
     .context("Failed to check if user's account exists")?
     {
-        Some((account_id,)) => {
+        Some((account_id, ask_for_profile_on_login, username, display_name)) => {
             let previous_session = request.cookie(SESSION_ID_COOKIE);
             if previous_session.is_some() {
                 trace!("Clearing a previous session on new login");
             }
+            let profile = username.zip(display_name);
             // Regular login for existing user.
-            let cookie = create_session(&app_state.redis_pool, account_id, previous_session)
-                .await
-                .context("Failed to record new session")?;
+            let cookie = create_session(
+                &app_state.redis_pool,
+                account_id,
+                previous_session,
+                profile.clone(),
+            )
+            .await
+            .context("Failed to record new session")?;
 
-            let mut response = partials::MessagePageTemplate {
-                config: &app_state.config,
-                logged_in: true,
-                current_profile: &None,
-                page_title: &Some("Logged in"),
-                message: format!("You are now logged in as {discord_email}.").as_str(),
-            }
-            .to_response();
+            let all_profiles: Vec<(String, String)> =
+                choose_profile::get_profiles(&app_state.db_pool, account_id).await?;
+            let mut response = if ask_for_profile_on_login {
+                choose_profile::ChooseProfileTemplate {
+                    config: &app_state.config,
+                    logged_in: true,
+                    current_profile: &profile.map(|(username, display_name)| ProfileRenderInfo {
+                        username,
+                        display_name,
+                    }),
+                    profiles: &all_profiles,
+                }
+                .to_response()
+            } else {
+                partials::MessagePageTemplate {
+                    config: &app_state.config,
+                    logged_in: true,
+                    current_profile: &None,
+                    page_title: &Some("Logged in"),
+                    message: format!("You are now logged in as {discord_email}.").as_str(),
+                }
+                .to_response()
+            };
             response
                 .add_cookie(&cookie)
                 .context("Error setting session cookie on request")?;
@@ -417,10 +446,12 @@ async fn check_if_user_already_exists(
     }
 }
 
+/// Initialize a new session in Redis.
 async fn create_session<'a>(
     redis_pool: &'a RedisPool,
     account_id: Uuid,
     previous_session: Option<Cookie<'_>>,
+    profile: Option<(String, String)>,
 ) -> std::result::Result<Cookie<'a>, RedisError> {
     let session_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
     let transaction = redis_pool.multi();
@@ -431,7 +462,15 @@ async fn create_session<'a>(
     let _ = transaction
         .hset::<i64, _, _>(
             key::session(&session_id),
-            HashMap::from([("account_id", account_id.simple().to_string())]),
+            if let Some((username, display_name)) = profile {
+                HashMap::from([
+                    ("account_id", account_id.simple().to_string()),
+                    ("username", username),
+                    ("display_name", display_name),
+                ])
+            } else {
+                HashMap::from([("account_id", account_id.simple().to_string())])
+            },
         )
         .await;
     let _ = transaction
@@ -460,16 +499,24 @@ async fn create_account(
     form: web::Form<RegisterUserForm>,
     request: HttpRequest,
 ) -> Result<impl Responder> {
-    if form.create_profile.as_ref().is_some_and(|x| x == "on")
-        && (form.username.is_none()
-            || form
-                .username
-                .as_ref()
-                .is_some_and(|x| !valid_username(&app_state.regex.alphanumeric, x)))
-    {
-        trace!("Rejecting bad username: {:?}", form.username);
-        return Err(Error::AppError("Bad username".to_string()));
-    }
+    let profile = if form.create_profile.as_ref().is_some_and(|x| x == "on") {
+        let username = form
+            .username
+            .clone()
+            .context("Expected username when creating a profile")?;
+        if !valid_username(&app_state.regex.alphanumeric, &username) {
+            trace!("Rejecting bad username: {:?}", username);
+            return Err(Error::AppError("Bad username".to_string()));
+        }
+        // TODO - Additional validation of display_name, etc.
+        let display_name = form
+            .display_name
+            .clone()
+            .context("Expected display_name when creating a profile")?;
+        Some((username, display_name))
+    } else {
+        None
+    };
 
     let email = match app_state
         .redis_pool
@@ -508,12 +555,13 @@ async fn create_account(
         .get(0);
 
     if form.create_profile.as_ref().is_some_and(|x| x == "on") {
-        transaction
-            .execute(
+        let profile_id: Uuid = transaction
+            .fetch_one(
                 sqlx::query(
                     r#"
                     insert into profile (username, account_id, display_name, bio)
                     values ($1, $2, $3, $4)
+                    returning id
                     "#,
                 )
                 .bind(&form.username)
@@ -522,7 +570,23 @@ async fn create_account(
                 .bind(&form.bio),
             )
             .await
-            .context("Failed to create profile")?;
+            .context("Failed to create profile")?
+            .get(0);
+
+        transaction
+            .execute(
+                sqlx::query(
+                    r#"
+                    update account
+                    set default_profile = $1
+                    where id = $2
+                    "#,
+                )
+                .bind(profile_id)
+                .bind(id),
+            )
+            .await
+            .context("Failed to set profile default")?;
     }
 
     transaction
@@ -530,9 +594,14 @@ async fn create_account(
         .await
         .context("Failed to commit account creation")?;
 
-    let cookie = create_session(&app_state.redis_pool, id, request.cookie(SESSION_ID_COOKIE))
-        .await
-        .context("Failed to create new session after account creation")?;
+    let cookie = create_session(
+        &app_state.redis_pool,
+        id,
+        request.cookie(SESSION_ID_COOKIE),
+        profile,
+    )
+    .await
+    .context("Failed to create new session after account creation")?;
     let mut response = partials::MessagePageTemplate {
         config: &app_state.config,
         logged_in: true,

@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1 class="mb-1 text-2xl font-bold">Settings</h1>
+  <p class="mb-2">Change settings here.</p>
+  <form action="/settings/" method="post">
+    <fieldset class="my-2 border-2 border-slate-500 p-2">
+      <legend class="text-l font-bold">Account-wide settings</legend>
+      <p class="mb-2">These settings apply to your whole account.</p>
+
+      <fieldset class="my-2 border-2 border-slate-500 p-2">
+        <legend class="text-l font-bold">Default login profile:</legend>
+        <p>
+          <label for="default_profile"
+            >This is the default profile that will be used when logging
+            in.</label
+          >
+        </p>
+
+        <div>
+          {# TODO - Implement profile redirect. #}
+          <input
+            type="radio"
+            id="@ask"
+            name="default_profile"
+            value="@ask"
+            {% if settings.ask_for_profile_on_login %}checked{% endif %}
+          />
+          <label for="@ask">Ask me every time</label>
+        </div>
+
+        <div>
+          <input
+            type="radio"
+            id="@reader"
+            name="default_profile"
+            value="@reader"
+            {% if !settings.ask_for_profile_on_login && settings.default_profile_username.is_none() %}checked{% endif %}
+          />
+          <label for="@reader">No profile (reader mode)</label>
+        </div>
+
+        {% for (username, display_name) in profiles %}
+          <div>
+            <input
+              type="radio"
+              id="{{ username }}"
+              name="default_profile"
+              value="{{ username }}"
+              {% if let Some(default_profile_username) = settings.default_profile_username %}
+                {% if !settings.ask_for_profile_on_login && default_profile_username == username.as_str() %}
+                  checked
+                {% endif %}
+              {% endif %}
+            />
+            <label for="{{ username }}"
+              >{{ display_name }} (@{{ username }})</label
+            >
+          </div>
+        {% endfor %}
+      </fieldset>
+      <input
+        class="bg-green-200 px-2 py-0.5 font-bold hover:bg-green-400"
+        type="submit"
+        value="Change account settings"
+      />
+    </fieldset>
+  </form>
+  <fieldset
+    class="my-2 border-2 border-slate-500 p-2"
+    x-data="{ edit_profile: '' }"
+  >
+    <legend class="text-l font-bold">Per-profile settings</legend>
+    <p class="mb-2">These settings apply to specific profiles.</p>
+
+    <table class="mb-2 border border-slate-400">
+      <thead>
+        <th class="border border-slate-300 p-1">Display name</th>
+        <th class="border border-slate-300 p-1">Username</th>
+        <th class="border border-slate-300 p-1">Actions</th>
+      </thead>
+      <tr>
+        {% for (username, display_name) in profiles %}
+          <td class="border border-slate-300 p-1">{{ display_name }}</td>
+          <td class="border border-slate-300 p-1">@{{ username }}</td>
+          <td class="border border-slate-300 p-1">
+            <button
+              class="bg-slate-200 px-2 py-0.5 hover:bg-slate-400"
+              x-on:click="edit_profile = '{{ username }}'"
+            >
+              edit
+            </button>
+            <button class="bg-red-200 px-2 py-0.5 hover:bg-red-400">
+              delete
+            </button>
+          </td>
+        {% endfor %}
+      </tr>
+    </table>
+
+    <hr />
+    <p x-show="edit_profile === ''">
+      <em>(choose a profile to edit above)</em>
+    </p>
+    {% for (username, display_name) in profiles %}
+      <div x-cloak x-show="edit_profile === '{{ username }}'">
+        <h2 class="text-l mb-1 font-bold">Editing @{{ username }}</h2>
+        <form>
+          <fieldset
+            class="my-2 border-2 border-slate-500 p-2"
+            x-data="{bioText: ''}"
+          >
+            <legend class="text-l font-bold">Change profile details</legend>
+            <div class="pb-2">
+              <label for="display_name">Display name: </label>
+              <input
+                type="text"
+                name="display_name"
+                placeholder="Display name"
+                value="{{ display_name }}"
+                maxlength="30"
+                class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
+              />
+              <p>
+                This text is displayed alongside your username for others to
+                easily identify you. Up to 30 characters long.
+              </p>
+            </div>
+            <div>
+              <p><label for="bio">Bio: </label></p>
+              <textarea
+                name="bio"
+                placeholder="Bio"
+                maxlength="500"
+                x-model="bioText"
+                class="w-full border-2 border-slate-500 p-0.5"
+              ></textarea>
+              <p>
+                (<span
+                  id="bio-char-counter"
+                  x-text="bioText.length"
+                  x-bind:class="bioText.length > 500 ? 'text-amber-600' : ''"
+                ></span
+                >/500 characters)
+              </p>
+            </div>
+            <input
+              class="mt-2 bg-green-200 px-2 py-0.5 font-bold hover:bg-green-400"
+              type="submit"
+              value="Change profile details"
+            />
+          </fieldset>
+        </form>
+        <form>
+          <fieldset class="my-2 border-2 border-slate-500 p-2">
+            <legend class="text-l font-bold">Change username</legend>
+            <label for="username">Username:</label>
+            <input
+              type="text"
+              name="username"
+              id="username"
+              placeholder="Username"
+              value="{{ username }}"
+              required
+              minlength="3"
+              maxlength="20"
+              pattern="[a-z][a-z0-9]*"
+              class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
+            />
+            <input
+              class="bg-green-200 px-2 py-0.5 font-bold hover:bg-green-400"
+              type="submit"
+              disabled
+              value="Change username"
+            />
+          </fieldset>
+        </form>
+      </div>
+    {% endfor %}
+  </fieldset>
+{% endblock content %}

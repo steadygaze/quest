@@ -182,7 +182,7 @@
         </p>
       </div>
       <div x-data="{bioText: ''}" class="border-t-2 py-2">
-        <label for="bio">Bio: </label>
+        <p><label for="bio">Bio: </label></p>
         <textarea
           name="bio"
           id="bio"
@@ -190,14 +190,16 @@
           maxlength="500"
           x-model="bioText"
           x-bind:disabled="!createProfile"
-          class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
+          class="w-full border-2 border-slate-500 p-0.5 disabled:border-slate-100"
         ></textarea>
-        (<span
-          id="bio-char-counter"
-          x-text="bioText.length"
-          x-bind:class="bioText.length > 500 ? 'text-amber-600' : ''"
-        ></span
-        >/500 characters)
+        <p>
+          (<span
+            id="bio-char-counter"
+            x-text="bioText.length"
+            x-bind:class="bioText.length > 500 ? 'text-amber-600' : ''"
+          ></span
+          >/500 characters)
+        </p>
       </div>
     </fieldset>
     <div class="border-t-2 py-2">

@@ -26,8 +26,8 @@ pub struct SessionInfo {
 
 /// Data necessary for rendering a page with a logged in user.
 pub struct ProfileRenderInfo {
-    pub display_name: String,
     pub username: String,
+    pub display_name: String,
 }
 
 /// Actix state object that all route handlers will have access to.

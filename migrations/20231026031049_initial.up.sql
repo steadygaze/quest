@@ -11,7 +11,8 @@ create table account (
   id uuid primary key default gen_random_uuid(),
   email email unique not null,
   secondary_email email[],
-  created_at timestamptz not null default current_timestamp
+  created_at timestamptz not null default current_timestamp,
+  ask_for_profile_on_login boolean not null default false
 );
 
 comment on table account is 'An account (lurker or profiled user) that is using our site.';
@@ -19,6 +20,7 @@ comment on column account.id is 'Account ID.';
 comment on column account.email is 'Primary email.';
 comment on column account.secondary_email is 'Secondary emails.';
 comment on column account.created_at is 'Created at timestamp.';
+comment on column account.ask_for_profile_on_login is 'Setting to ask for what profile to log in as every login.';
 
 create domain username as varchar(20)
   check ( value ~ '^[a-z0-9]+$' and substring(value, 1, 1) ~ '[a-z]' );
@@ -30,6 +32,10 @@ create table profile (
   display_name varchar(30),
   bio varchar(500)
 );
+
+alter table account add column default_profile uuid references profile;
+comment on column account.default_profile is 'Default profile. Null is reader mode.';
+-- TODO - Add trigger that default profile must have same account.
 
 comment on table profile is 'User profile, for non-lurker users.';
 comment on column profile.id is 'Profile ID. Unchanging in case the username is changed. Private/transparent to users.';
@@ -131,17 +137,6 @@ comment on column quest_post.body_html is 'Actual text of the post converted to 
 comment on column quest_post.created_at is 'When the post was created.';
 comment on column quest_post.published_at is 'Whether it has been published. Null if unpublished.';
 comment on column quest_post.state is 'What state the post is in.';
-
-create table account_settings (
-  account uuid primary key not null references account,
-  ask_for_profile_on_login boolean,
-  default_profile uuid references profile
-);
-
-comment on table account_settings is 'Per-account settings';
-comment on column account_settings.account is 'Account that this row is for.';
-comment on column account_settings.ask_for_profile_on_login is 'Ask for what profile to log in as every login.';
-comment on column account_settings.default_profile is 'Default profile. Nullable.';
 
 create table username_tombstone (
     username username not null,
