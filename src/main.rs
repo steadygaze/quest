@@ -24,6 +24,7 @@ mod oauth;
 mod partials;
 mod permissions;
 mod routes;
+pub mod validation;
 
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 

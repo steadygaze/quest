@@ -48,15 +48,6 @@ pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
         .service(logout)
 }
 
-/// First character is a letter, username is between 3 and 30 characters long,
-/// and is alphanumeric.
-pub fn valid_username(alphanumeric: &Regex, username: &str) -> bool {
-    username.chars().next().is_some_and(|x| x.is_lowercase())
-        && username.len() >= 3
-        && username.len() < 30
-        && alphanumeric.is_match(username)
-}
-
 /// Temporary endpoint for testing the auth page template.
 #[get("/test")]
 async fn test(app_state: web::Data<AppState>) -> impl Responder {
@@ -339,7 +330,10 @@ async fn discord_callback(
                 partials::MessagePageTemplate {
                     config: &app_state.config,
                     logged_in: true,
-                    current_profile: &None,
+                    current_profile: &profile.map(|(username, display_name)| ProfileRenderInfo {
+                        username,
+                        display_name,
+                    }),
                     page_title: &Some("Logged in"),
                     message: format!("You are now logged in as {discord_email}.").as_str(),
                 }
@@ -504,9 +498,9 @@ async fn create_account(
             .username
             .clone()
             .context("Expected username when creating a profile")?;
-        if !valid_username(&app_state.regex.alphanumeric, &username) {
+        if !validation::username(&username) {
             trace!("Rejecting bad username: {:?}", username);
-            return Err(Error::AppError("Bad username".to_string()));
+            return Err(Error::AppError(format!("Bad username \"{}\"", username)));
         }
         // TODO - Additional validation of display_name, etc.
         let display_name = form
@@ -573,7 +567,7 @@ async fn create_account(
             .context("Failed to create profile")?
             .get(0);
 
-        transaction
+        if transaction
             .execute(
                 sqlx::query(
                     r#"
@@ -586,7 +580,12 @@ async fn create_account(
                 .bind(id),
             )
             .await
-            .context("Failed to set profile default")?;
+            .context("Failed to set profile default")?
+            .rows_affected()
+            <= 0
+        {
+            return Err(sqlx::Error::RowNotFound).context("Failed to find account to update")?;
+        }
     }
 
     transaction

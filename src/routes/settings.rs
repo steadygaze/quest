@@ -23,18 +23,19 @@ struct Settings {
 
 #[get("/")]
 async fn view(app_state: web::Data<AppState>, request: HttpRequest) -> Result<impl Responder> {
-    view_helper(app_state, request).await
+    let session_info = app_state.require_session(request).await?;
+    view_fn(app_state, session_info).await
 }
 
-async fn view_helper(
+async fn view_fn(
     app_state: web::Data<AppState>,
-    request: HttpRequest,
+    session_info: SessionInfo,
 ) -> Result<impl Responder> {
     let SessionInfo {
         account_id,
         current_profile,
         ..
-    } = app_state.require_session(request).await?;
+    } = session_info;
 
     let (settings, profiles): (Settings, Vec<(String, String)>) = try_join!(
         sqlx::query_as(
@@ -84,7 +85,59 @@ async fn update(
     request: HttpRequest,
     form: web::Form<SettingsForm>,
 ) -> Result<impl Responder> {
-    // TODO - Implement update.
+    let session_info = app_state.require_session(request).await?;
 
-    view_helper(app_state, request).await
+    let default_profile = form.default_profile.as_str();
+    match default_profile {
+        "@ask" | "@reader" => {
+            if sqlx::query(
+                r#"
+                update account
+                set ask_for_profile_on_login = $1, default_profile = null
+                where id = $2
+                "#,
+            )
+            .bind(default_profile == "@ask")
+            .bind(session_info.account_id)
+            .execute(&app_state.db_pool)
+            .await
+            .context("Failed to set profile default")?
+            .rows_affected()
+                <= 0
+            {
+                return Err(sqlx::Error::RowNotFound)
+                    .context("Failed to find account to update")?;
+            }
+        }
+        _ => {
+            if !validation::username(default_profile) {
+                return Err(Error::AppError(format!(
+                    "Bad username \"{}\"",
+                    default_profile
+                )));
+            }
+            if sqlx::query(
+                r#"
+                update account
+                set ask_for_profile_on_login = false, default_profile = (
+                  select id from profile where username = $1 limit 1
+                )
+                where id = $2
+                "#,
+            )
+            .bind(default_profile)
+            .bind(session_info.account_id)
+            .execute(&app_state.db_pool)
+            .await
+            .context("Failed to set profile default")?
+            .rows_affected()
+                <= 0
+            {
+                return Err(sqlx::Error::RowNotFound)
+                    .context("Failed to find account to update")?;
+            }
+        }
+    }
+
+    view_fn(app_state, session_info).await
 }
