@@ -1,5 +1,6 @@
 -- TODO - Consider using citext again.
 
+-- pg_partman extension on schema partman.
 create schema partman;
 create extension pg_partman schema partman;
 
@@ -28,14 +29,33 @@ create domain username as varchar(20)
 create table profile (
   id uuid primary key default gen_random_uuid(),
   username username unique not null constraint username_not_too_long check (length(username) >= 3),
-  account_id uuid references account,
+  account_id uuid references account not null,
   display_name varchar(30),
   bio varchar(500)
 );
 
 alter table account add column default_profile uuid references profile;
+alter table account set constraint
 comment on column account.default_profile is 'Default profile. Null is reader mode.';
--- TODO - Add trigger that default profile must have same account.
+
+create or replace function check_account_default_profile() returns trigger as $$
+  declare
+    profile_not_same_account boolean;
+  begin
+    if new.default_profile is not null and new.default_profile is distinct from old.default_profile then
+      select not exists(select 1 from profile where id = new.default_profile and account_id = new.id limit 1) into profile_not_same_account;
+      if profile_not_same_account then
+        raise exception 'default_profile must exist in the profile table and be owned by the same account';
+      end if;
+    end if;
+    return new;
+  end;
+$$ language plpgsql;
+
+create constraint trigger tcheck_account_default_profile
+  after insert or update on account
+  deferrable initially deferred
+  for each row execute function check_account_default_profile();
 
 comment on table profile is 'User profile, for non-lurker users.';
 comment on column profile.id is 'Profile ID. Unchanging in case the username is changed. Private/transparent to users.';

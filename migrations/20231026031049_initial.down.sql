@@ -1,3 +1,6 @@
+drop function if exists check_account_default_profile;
+drop trigger if exists tcheck_account_default_profile;
+
 drop table if exists username_tombstone_table_template;
 drop table if exists username_tombstone;
 
