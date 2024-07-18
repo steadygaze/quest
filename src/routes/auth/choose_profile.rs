@@ -98,12 +98,7 @@ pub async fn choose_profile_submit(
         .to_response());
     }
 
-    if !validation::username(&form.profile) {
-        return Err(Error::AppError(format!(
-            "Bad username \"{}\"",
-            &form.profile
-        )));
-    }
+    validation::username(&form.profile)?;
 
     match sqlx::query_as::<_, (String,)>(
         r#"

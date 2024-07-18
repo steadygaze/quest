@@ -4,6 +4,13 @@ pub fn add_routes(scope: actix_web::Scope) -> actix_web::Scope {
     scope.service(view).service(update)
 }
 
+#[derive(sqlx::FromRow, Debug, PartialEq, Eq)]
+struct Profile {
+    username: String,
+    display_name: String,
+    bio: String,
+}
+
 #[derive(Template)]
 #[template(path = "settings/view.html")]
 struct SettingsTemplate<'a> {
@@ -11,7 +18,8 @@ struct SettingsTemplate<'a> {
     current_profile: &'a Option<ProfileRenderInfo>,
     logged_in: bool,
     settings: &'a Settings,
-    profiles: &'a Vec<(String, String)>,
+    profiles: &'a Vec<Profile>,
+    messages: &'a Vec<String>,
 }
 
 /// Output object for settings.
@@ -24,12 +32,13 @@ struct Settings {
 #[get("/")]
 async fn view(app_state: web::Data<AppState>, request: HttpRequest) -> Result<impl Responder> {
     let session_info = app_state.require_session(request).await?;
-    view_fn(app_state, session_info).await
+    view_fn(app_state, session_info, &Vec::new()).await
 }
 
 async fn view_fn(
     app_state: web::Data<AppState>,
     session_info: SessionInfo,
+    messages: &Vec<String>,
 ) -> Result<impl Responder> {
     let SessionInfo {
         account_id,
@@ -37,7 +46,7 @@ async fn view_fn(
         ..
     } = session_info;
 
-    let (settings, profiles): (Settings, Vec<(String, String)>) = try_join!(
+    let (settings, profiles): (Settings, Vec<Profile>) = try_join!(
         sqlx::query_as(
             r#"
             select
@@ -54,7 +63,7 @@ async fn view_fn(
         .fetch_one(&app_state.db_pool),
         sqlx::query_as(
             r#"
-            select username, display_name
+            select username, display_name, bio
             from profile
             where account_id = $1
             "#,
@@ -70,13 +79,27 @@ async fn view_fn(
         logged_in: true,
         settings: &settings,
         profiles: &profiles,
+        messages: &messages,
     }
     .to_response())
 }
 
 #[derive(Debug, Deserialize)]
-struct SettingsForm {
-    default_profile: String,
+#[serde(tag = "type")]
+enum SettingsForm {
+    /// Account change.
+    Account { default_profile: String },
+    /// Profile details change.
+    ProfileDetails {
+        username: String,
+        display_name: String,
+        bio: String,
+    },
+    /// Profile username change.
+    ProfileUsername {
+        original_username: String,
+        username: String,
+    },
 }
 
 #[post("/")]
@@ -87,46 +110,84 @@ async fn update(
 ) -> Result<impl Responder> {
     let session_info = app_state.require_session(request).await?;
 
-    let default_profile = form.default_profile.as_str();
-    match default_profile {
-        "@ask" | "@reader" => {
-            if sqlx::query(
-                r#"
-                update account
-                set ask_for_profile_on_login = $1, default_profile = null
-                where id = $2
-                "#,
-            )
-            .bind(default_profile == "@ask")
-            .bind(session_info.account_id)
-            .execute(&app_state.db_pool)
-            .await
-            .context("Failed to set profile default")?
-            .rows_affected()
-                <= 0
-            {
-                return Err(sqlx::Error::RowNotFound)
-                    .context("Failed to find account to update")?;
+    let mut messages = Vec::new();
+    match form.into_inner() {
+        SettingsForm::Account { default_profile } => {
+            let default_profile = default_profile.as_str();
+            match default_profile {
+                "__ask" | "__reader" => {
+                    if sqlx::query(
+                        r#"
+                        update account
+                        set ask_for_profile_on_login = $1, default_profile = null
+                        where id = $2
+                        "#,
+                    )
+                    .bind(default_profile == "__ask")
+                    .bind(session_info.account_id)
+                    .execute(&app_state.db_pool)
+                    .await
+                    .context("Failed to set profile default")?
+                    .rows_affected()
+                        <= 0
+                    {
+                        return Err(sqlx::Error::RowNotFound)
+                            .context("Failed to find account to update")?;
+                    }
+
+                    messages.push(format!(
+                        "Set default profile to {}",
+                        if default_profile == "__ask" {
+                            "\"Ask me every time\""
+                        } else {
+                            "no profile (reader mode)"
+                        }
+                    ));
+                }
+                _ => {
+                    validation::username(default_profile)?;
+                    if sqlx::query(
+                        r#"
+                        update account
+                        set ask_for_profile_on_login = false, default_profile = (
+                          select id from profile where username = $1 limit 1
+                        )
+                        where id = $2
+                        "#,
+                    )
+                    .bind(default_profile)
+                    .bind(session_info.account_id)
+                    .execute(&app_state.db_pool)
+                    .await
+                    .context("Failed to set profile default")?
+                    .rows_affected()
+                        <= 0
+                    {
+                        return Err(sqlx::Error::RowNotFound)
+                            .context("Failed to find profile to update")?;
+                    }
+                    messages.push(format!("Set default profile to @{}", default_profile));
+                }
             }
         }
-        _ => {
-            if !validation::username(default_profile) {
-                return Err(Error::AppError(format!(
-                    "Bad username \"{}\"",
-                    default_profile
-                )));
-            }
+        SettingsForm::ProfileDetails {
+            username,
+            display_name,
+            bio,
+        } => {
+            trace!("Bio: {}", bio);
+            // TODO: verify ownership before update.
+            validation::username(username.as_str())?;
             if sqlx::query(
                 r#"
-                update account
-                set ask_for_profile_on_login = false, default_profile = (
-                  select id from profile where username = $1 limit 1
-                )
-                where id = $2
+                update profile
+                set display_name = $1, bio = $2
+                where username = $3
                 "#,
             )
-            .bind(default_profile)
-            .bind(session_info.account_id)
+            .bind(display_name)
+            .bind(bio)
+            .bind(&username)
             .execute(&app_state.db_pool)
             .await
             .context("Failed to set profile default")?
@@ -136,8 +197,40 @@ async fn update(
                 return Err(sqlx::Error::RowNotFound)
                     .context("Failed to find account to update")?;
             }
+            messages.push(format!("Updated display name and/or bio for @{}", username));
+        }
+        SettingsForm::ProfileUsername {
+            original_username,
+            username,
+        } => {
+            // TODO: verify ownership before update.
+            validation::username(username.as_str())?;
+            validation::username(original_username.as_str())?;
+            if sqlx::query(
+                r#"
+                update profile
+                set username = $1
+                where username = $2
+                "#,
+            )
+            .bind(&username)
+            .bind(&original_username)
+            .bind(session_info.account_id)
+            .execute(&app_state.db_pool)
+            .await
+            .context("Failed to set username")?
+            .rows_affected()
+                <= 0
+            {
+                return Err(sqlx::Error::RowNotFound)
+                    .context("Failed to find profile to update")?;
+            }
+            messages.push(format!(
+                "Changed username from @{} to @{}",
+                original_username, username
+            ));
         }
     }
 
-    view_fn(app_state, session_info).await
+    view_fn(app_state, session_info, &messages).await
 }

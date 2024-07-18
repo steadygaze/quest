@@ -498,10 +498,7 @@ async fn create_account(
             .username
             .clone()
             .context("Expected username when creating a profile")?;
-        if !validation::username(&username) {
-            trace!("Rejecting bad username: {:?}", username);
-            return Err(Error::AppError(format!("Bad username \"{}\"", username)));
-        }
+        validation::username(&username)?;
         // TODO - Additional validation of display_name, etc.
         let display_name = form
             .display_name

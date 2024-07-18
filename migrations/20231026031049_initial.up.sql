@@ -35,15 +35,20 @@ create table profile (
 );
 
 alter table account add column default_profile uuid references profile;
-alter table account set constraint
 comment on column account.default_profile is 'Default profile. Null is reader mode.';
 
 create or replace function check_account_default_profile() returns trigger as $$
   declare
     profile_not_same_account boolean;
   begin
-    if new.default_profile is not null and new.default_profile is distinct from old.default_profile then
-      select not exists(select 1 from profile where id = new.default_profile and account_id = new.id limit 1) into profile_not_same_account;
+    if new.default_profile is not null
+        and new.default_profile is distinct from old.default_profile then
+      select not exists(
+        select 1
+        from profile
+        where id = new.default_profile
+          and account_id = new.id limit 1
+      ) into profile_not_same_account;
       if profile_not_same_account then
         raise exception 'default_profile must exist in the profile table and be owned by the same account';
       end if;
