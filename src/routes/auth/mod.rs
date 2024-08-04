@@ -594,14 +594,18 @@ async fn create_account(
         &app_state.redis_pool,
         id,
         request.cookie(SESSION_ID_COOKIE),
-        profile,
+        profile.clone(),
     )
     .await
     .context("Failed to create new session after account creation")?;
+    let profile_render_info = profile.map(|(username, display_name)| ProfileRenderInfo {
+        username,
+        display_name,
+    });
     let mut response = partials::MessagePageTemplate {
         config: &app_state.config,
         logged_in: true,
-        current_profile: &None,
+        current_profile: &profile_render_info,
         page_title: &Some("Logged in"),
         message: "Account created successfully. You are now logged in.",
     }
