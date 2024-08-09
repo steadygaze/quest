@@ -190,12 +190,18 @@
               maxlength="20"
               pattern="[a-z][a-z0-9]*"
               class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
+              hx-get="/auth/profile_exists_already"
+              hx-trigger="keyup changed delay:1s"
+              hx-target="#username-validation-target"
+              {# Intercept HTMX event for client-side-only errors. #}
+              hx-on::before-request="check_username(event)"
             />
             <input
               class="bg-green-200 px-2 py-0.5 font-bold hover:bg-green-400"
               type="submit"
               value="Change username"
-            />{# TODO - Implement username availability check. #}
+            />
+            <span id="username-validation-target"></span>
           </fieldset>
         </form>
       </div>
