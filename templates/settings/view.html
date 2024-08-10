@@ -90,8 +90,8 @@
         <th class="border border-slate-300 p-1">Username</th>
         <th class="border border-slate-300 p-1">Actions</th>
       </thead>
-      <tr>
-        {% for profile in profiles %}
+      {% for profile in profiles %}
+        <tr>
           <td class="border border-slate-300 p-1">
             {{ profile.display_name }}
           </td>
@@ -103,12 +103,26 @@
             >
               edit
             </button>
-            <button class="bg-red-200 px-2 py-0.5 hover:bg-red-400">
+            <button disabled class="bg-red-200 px-2 py-0.5 hover:bg-red-400">
               delete
             </button>
           </td>
-        {% endfor %}
-      </tr>
+        </tr>
+      {% endfor %}
+      {% if profiles.len() < 5 %}
+        <tr>
+          <td class="border border-slate-300 p-1"><em>(new)</em></td>
+          <td class="border border-slate-300 p-1"><em>(new)</em></td>
+          <td class="border border-slate-300 p-1">
+            <button
+              class="bg-slate-200 px-2 py-0.5 hover:bg-slate-400"
+              x-on:click="edit_profile = '__new'"
+            >
+              create new
+            </button>
+          </td>
+        </tr>
+      {% endif %}
     </table>
 
     <hr />
@@ -206,5 +220,90 @@
         </form>
       </div>
     {% endfor %}
+    <div x-cloak x-show="edit_profile === '__new'">
+      <h2 class="text-l mb-1 font-bold">Create new profile</h2>
+      <form
+        action="/settings/"
+        method="post"
+        x-data="{displayName: '', username: '', usernameDirty: false}"
+      >
+        <input type="hidden" name="type" value="NewProfile" />
+        <div class="border-t-2 py-2">
+          <label for="display_name">Display name: </label>
+          <input
+            type="text"
+            name="display_name"
+            id="display_name"
+            placeholder="Display name"
+            maxlength="30"
+            x-model="displayName"
+            class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
+          />
+          <p>
+            This text is displayed alongside your username for others to easily
+            identify you. Up to 30 characters long.
+          </p>
+        </div>
+        <div class="border-t-2 py-2">
+          <label for="username">Username: </label>
+          <input
+            type="text"
+            name="username"
+            id="username"
+            placeholder="Username"
+            required
+            minlength="3"
+            maxlength="20"
+            pattern="[a-z][a-z0-9]*"
+            x-model="username"
+            x-init="$watch('displayName', () => { if (!usernameDirty) { username = usernameify(displayName); } })"
+            x-on:keyup="usernameDirty = username !== '' && username !== usernameify(displayName)"
+            hx-get="/auth/profile_exists_already"
+            hx-trigger="keyup changed delay:1s from:#display_name, keyup changed delay:1s"
+            hx-target="#new-username-validation-target"
+            hx-indicator="#username-spinner"
+            {# Intercept HTMX event for client-side-only errors. #}
+            hx-on::before-request="check_username(event, 'new-username-validation-target')"
+            class="border-2 border-slate-500 p-0.5 disabled:border-slate-100"
+          />
+          <span id="new-username-validation-target"></span>
+          <img
+            id="username-spinner"
+            class="htmx-indicator inline"
+            src="/img/spinner.svg"
+          />
+          <p>
+            A username is also used to identify you, but may be abbreviated
+            compared to the display name. It may be used by others to refer to
+            you. It may contain only letters or numbers, be between three and
+            thirty characters long, and must start with a letter.
+          </p>
+        </div>
+        <div x-data="{bioText: ''}" class="border-t-2 py-2">
+          <p><label for="bio">Bio: </label></p>
+          <textarea
+            name="bio"
+            id="bio"
+            placeholder="Bio"
+            maxlength="500"
+            x-model="bioText"
+            class="w-full border-2 border-slate-500 p-0.5 disabled:border-slate-100"
+          ></textarea>
+          <p>
+            (<span
+              id="bio-char-counter"
+              x-text="bioText.length"
+              x-bind:class="bioText.length > 500 ? 'text-amber-600' : ''"
+            ></span
+            >/500 characters)
+          </p>
+        </div>
+        <input
+          class="mt-2 bg-green-200 px-2 py-0.5 font-bold hover:bg-green-400"
+          type="submit"
+          value="Create new profile"
+        />
+      </form>
+    </div>
   </fieldset>
 {% endblock content %}

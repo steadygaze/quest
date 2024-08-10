@@ -100,6 +100,12 @@ enum SettingsForm {
         original_username: String,
         username: String,
     },
+    /// Create a new profile.
+    NewProfile {
+        username: String,
+        display_name: String,
+        bio: String,
+    },
 }
 
 #[post("/")]
@@ -228,6 +234,50 @@ async fn update(
             messages.push(format!(
                 "Changed username from @{} to @{}",
                 original_username, username
+            ));
+        }
+        SettingsForm::NewProfile {
+            username,
+            display_name,
+            bio,
+        } => {
+            validation::username(username.as_str())?;
+            let (profile_count,): (i64,) = sqlx::query_as(
+                r#"
+                select count(*)
+                from profile
+                where account_id = $1
+                "#,
+            )
+            .bind(session_info.account_id)
+            .fetch_one(&app_state.db_pool)
+            .await
+            .context("Failed to check profile count")?;
+
+            if profile_count >= 5 {
+                return Err(Error::AppError(
+                    "Too many existing profiles to create a new one".to_string(),
+                ));
+            }
+
+            sqlx::query(
+                r#"
+                insert into profile (username, account_id, display_name, bio)
+                values ($1, $2, $3, $4)
+                returning id
+                "#,
+            )
+            .bind(&username)
+            .bind(session_info.account_id)
+            .bind(display_name)
+            .bind(bio)
+            .execute(&app_state.db_pool)
+            .await
+            .context("Failed to create profile")?;
+
+            messages.push(format!(
+                "Created new profile @{} (visit \"Change profile\" to use it)",
+                username
             ));
         }
     }

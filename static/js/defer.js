@@ -6,7 +6,7 @@ function usernameify(str) {
     .replaceAll(/[^a-z0-9]/g, "");
 }
 
-function check_username(event) {
+function check_username(event, validationOutId = "username-validation-target") {
   const username = event.detail.requestConfig.parameters.username;
   if (globalThis.username && globalThis.username === username) {
     // Prevent double-triggering in some circumstances.
@@ -16,15 +16,15 @@ function check_username(event) {
   globalThis.username = username;
   if (username.length < 3) {
     event.preventDefault(); // Cancel AJAX.
-    document.getElementById("username-validation-target").innerHTML =
+    document.getElementById(validationOutId).innerHTML =
       "<span class='text-amber-600'>Username too short</span>";
   } else if (/[^a-z0-9]/.test(username)) {
     event.preventDefault(); // Cancel AJAX.
-    document.getElementById("username-validation-target").innerHTML =
+    document.getElementById(validationOutId).innerHTML =
       "<span class='text-amber-600'>Username contains unallowed characters</span>";
   } else if (/^[^a-z]/.test(username)) {
     event.preventDefault(); // Cancel AJAX.
-    document.getElementById("username-validation-target").innerHTML =
+    document.getElementById(validationOutId).innerHTML =
       "<span class='text-amber-600'>Username must start with a letter (not a number)</span>";
   }
 }
