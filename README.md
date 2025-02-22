@@ -1,5 +1,9 @@
 # Quest
 
+## Archive notice
+
+This was an early attempt at creating a quest hosting platform. It has since been supplanted by <https://github.com/steadygaze/questarch>.
+
 ## Development
 
 ### Setup
